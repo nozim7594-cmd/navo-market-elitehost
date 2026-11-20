@@ -1,0 +1,21 @@
+{
+  "name": "navo-market",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "build": "node scripts/build.mjs",
+    "launch:check": "node --env-file-if-exists=.env scripts/elitehost-check.mjs",
+    "launch:bot": "node --env-file-if-exists=.env scripts/activate-bot.mjs",
+    "db:backup": "node --env-file-if-exists=.env scripts/backup.mjs"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "@ton/crypto": "3.3.0",
+    "@ton/ton": "16.3.0",
+    "lottie-web": "5.13.0"
+  }
+}
