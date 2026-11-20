@@ -1,16 +1,17 @@
+import {publicSettings,starsPricing} from '../settings.mjs';
 import {access,mkdir} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import {dirname,resolve} from 'node:path';
 import {merchantSigner} from '../marketapp.mjs';
 
-const env=process.env;
+const env=publicSettings(process.env);
 const missing=['BOT_TOKEN','BOT_USERNAME','ADMIN_IDS','TELEGRAM_WEBHOOK_SECRET','PUBLIC_URL',
-  'DB_PATH','CRYPTO_WALLET','STARS_PER_TON','MARKETAPP_API_TOKEN','MARKETAPP_WALLET_ADDRESS',
+  'DB_PATH','CRYPTO_WALLET','MARKETAPP_API_TOKEN','MARKETAPP_WALLET_ADDRESS',
   'MARKETAPP_WALLET_MNEMONIC','MARKETAPP_NETWORK_RESERVE_NANO'].filter(key=>!env[key]?.trim());
 if(missing.length)throw Error('Set these hosting variables: '+missing.join(', '));
 if(!/^[1-9]\d*(\s*,\s*[1-9]\d*)*$/.test(env.ADMIN_IDS) ||
    !/^[a-zA-Z0-9_-]{32,256}$/.test(env.TELEGRAM_WEBHOOK_SECRET) ||
-   !(Number(env.STARS_PER_TON)>0) || !Number.isSafeInteger(Number(env.MARKETAPP_NETWORK_RESERVE_NANO)) ||
+   !starsPricing(env) || !Number.isSafeInteger(Number(env.MARKETAPP_NETWORK_RESERVE_NANO)) ||
    Number(env.MARKETAPP_NETWORK_RESERVE_NANO)<=0) throw Error('Check admin IDs, webhook secret, Stars rate and network reserve.');
 const url=new URL(env.PUBLIC_URL);
 if(url.protocol!=='https:'||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw Error('PUBLIC_URL must be the public HTTPS origin of this backend.');

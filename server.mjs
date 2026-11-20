@@ -1,3 +1,4 @@
+import {publicSettings,starsPricing} from './settings.mjs';
 import {tonPayments} from './ton-payments.mjs';
 import {partnerMarket} from './marketapp.mjs';
 import http from 'node:http';
@@ -31,6 +32,7 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  function tx(fn){db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result}catch(e){db.exec('ROLLBACK');throw e}}
  const partner=partnerMarket({db,tx,env});
  const deposits=tonPayments({db,tx,env,client:tonClient});
+ const stars=starsPricing(env);
  function expire(){db.prepare("UPDATE rentals SET status='returning' WHERE status='active' AND ends_at<=?").run(now())}
  function auth(req){let tg;try{tg=verifyTelegram(req.headers['x-telegram-init-data'],env.BOT_TOKEN)}catch(e){fail(e.message,401)}db.prepare('INSERT INTO users(id,name) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name').run(tg.id,tg.first_name||'Foydalanuvchi');return {...db.prepare('SELECT * FROM users WHERE id=?').get(tg.id),admin:admins.includes(String(tg.id))}}
  async function telegram(method,body){if(!env.BOT_TOKEN)fail('Bot hali sozlanmagan.',503);const r=await telegramFetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await r.json();if(!r.ok||!data.ok)fail('Telegram to‘lov xizmatiga ulanib bo‘lmadi.',502);return data.result}
@@ -52,7 +54,7 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  result=await webhook(await parse(req));
  }else if(path.startsWith('/api/')){
  const raw=req.headers['x-telegram-init-data'];const user=raw?auth(req):null;
- if(path==='/api/bootstrap'&&req.method==='GET')result={products:[...await partner.catalog().catch(()=>[]),...catalog()],partner_enabled:!!env.MARKETAPP_API_TOKEN,user,config:{marketapp_checkout:partner.billingReady,crypto_wallet:env.CRYPTO_WALLET||'',ton_auto:deposits.enabled,stars_enabled:!!(env.BOT_TOKEN&&env.TELEGRAM_WEBHOOK_SECRET&&Number(env.STARS_PER_TON)>0),stars_per_ton:Number(env.STARS_PER_TON)||null}};
+ if(path==='/api/bootstrap'&&req.method==='GET')result={products:[...await partner.catalog().catch(()=>[]),...catalog()],partner_enabled:!!env.MARKETAPP_API_TOKEN,user,config:{marketapp_checkout:partner.billingReady,crypto_wallet:env.CRYPTO_WALLET||'',ton_auto:deposits.enabled,stars_enabled:!!(env.BOT_TOKEN&&env.TELEGRAM_WEBHOOK_SECRET&&stars),stars_per_ton:stars?.starsPerTon||null,stars_ton_per_100:stars?.tonPer100||null,stars_credit_micro:stars?.microPerStar||null}};
  else{
  if(!user)fail('Telegram orqali kiring.',401);
  const write=req.method==='POST';if(!write&&req.method!=='GET')fail('Usul topilmadi.',405);const b=write?await parse(req):{};
@@ -72,8 +74,8 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  let reference=String(b.reference||'').trim();if(/^[a-f0-9]{64}$/i.test(reference))reference=reference.toLowerCase();if(!/^([a-f0-9]{64}|[A-Za-z0-9_-]{43}=?)$/.test(reference))fail('TON tranzaksiya hashini kiriting.');
  if(db.prepare("SELECT id FROM payments WHERE method='crypto' AND reference=?").get(reference))fail('Bu tranzaksiya allaqachon yuborilgan.',409);const credit=Math.round(amount*1e6);if(credit<1)fail('Summa juda kichik.');try{const r=db.prepare("INSERT INTO payments(user_id,method,amount,credit,reference,created_at) VALUES(?,'crypto',?,?,?,?)").run(user.id,amount,credit,reference,now());result={id:Number(r.lastInsertRowid),status:'pending'}}catch(e){if(e.code?.includes('CONSTRAINT'))fail('Bu tranzaksiya allaqachon yuborilgan.',409);throw e}
  }else if(b.method==='stars'){
- if(!Number.isSafeInteger(amount)||amount>100000)fail('Stars summasi butun son bo‘lishi kerak.');const rate=Number(env.STARS_PER_TON);if(!Number.isFinite(rate)||rate<=0)fail('Stars kursi sozlanmagan.',503);
- const invoice='navo_'+randomBytes(20).toString('hex'),credit=Math.round(amount/rate*1e6);if(credit<1)fail('Summa juda kichik.');
+ if(!Number.isSafeInteger(amount)||amount>100000)fail('Stars summasi butun son bo‘lishi kerak.');if(!stars)fail('Stars kursi sozlanmagan.',503);
+ const invoice='navo_'+randomBytes(20).toString('hex'),credit=stars.credit(amount);if(!Number.isSafeInteger(credit)||credit<1)fail('Summa juda kichik.');
  const r=db.prepare("INSERT INTO payments(user_id,method,amount,credit,invoice,created_at) VALUES(?,'stars',?,?,?,?)").run(user.id,amount,credit,invoice,now());
  try{const invoice_url=await telegram('createInvoiceLink',{title:'Navo Market balans',description:`Balans to‘ldirish: ${(credit/1e6).toFixed(6)} TON`,payload:invoice,currency:'XTR',provider_token:'',prices:[{label:'Balans to‘ldirish',amount}]});result={id:Number(r.lastInsertRowid),invoice_url}}catch(e){db.prepare("UPDATE payments SET status='rejected' WHERE id=?").run(r.lastInsertRowid);throw e}
  }else fail('To‘lov usuli noto‘g‘ri.');
@@ -96,7 +98,8 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
 }
 export function startServer(){
  try{process.loadEnvFile(root+'.env')}catch(error){if(error.code!=='ENOENT')throw error}
- const app=makeApp();const server=http.createServer(app.handler);
+ const env=publicSettings(process.env);
+ const app=makeApp({env,dbPath:env.DB_PATH||root+'navo.sqlite'});const server=http.createServer(app.handler);
  const port=Number(process.env.PORT || process.env.SERVER_PORT || 39292);
  server.on('close',()=>app.close());
  server.listen(port,'0.0.0.0',()=>console.log(`Navo Market server ready on port ${server.address().port}`));

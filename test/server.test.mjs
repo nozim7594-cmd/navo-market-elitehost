@@ -18,3 +18,19 @@ test('TON invoice API is user-scoped, never manually approvable and does not cre
  assert.equal((await req('payments')).data[0].memo,invoice.data.memo);
  assert.equal(db.prepare('SELECT balance FROM users WHERE id=12').get().balance,0);
 });
+
+test('configured Stars rate credits exact microTON and is frozen in each invoice',async t=>{
+ const {req,db}=await fixture(t,{STARS_MICRO_TON_PER_STAR:'13000'});
+ const config=(await req('bootstrap')).data.config;
+ assert.equal(config.stars_ton_per_100,1.3);assert.equal(config.stars_credit_micro,13000);
+ let expected=0;
+ for(const amount of [1,100,250,1000]){
+  const invoice=await req('payments',{method:'stars',amount});assert.equal(invoice.status,200);
+  const row=db.prepare('SELECT * FROM payments WHERE id=?').get(invoice.data.id);
+  assert.equal(row.credit,amount*13000);
+  const update={message:{from:{id:12},successful_payment:{invoice_payload:row.invoice,currency:'XTR',total_amount:amount,telegram_payment_charge_id:'rate-'+amount}}};
+  const headers={'X-Telegram-Bot-Api-Secret-Token':'secret'};
+  assert.equal((await req('telegram/webhook',update,null,headers)).status,200);
+  expected+=amount*13000;assert.equal((await req('me')).data.balance,expected);
+ }
+});
