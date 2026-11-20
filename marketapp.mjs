@@ -40,10 +40,10 @@ export function partnerMarket({db,tx,env,request=fetch,signer=merchantSigner}) {
   const billingReady=Boolean(env.MARKETAPP_API_TOKEN&&env.MARKETAPP_WALLET_ADDRESS&&env.MARKETAPP_WALLET_MNEMONIC&&Number.isSafeInteger(reserve)&&reserve>0);
   if(!Number.isInteger(markup)||markup<=0||markup>100)throw Error('Invalid MARKETAPP_MARKUP_PERCENT');
   async function call(path,body) {
-    if(!env.MARKETAPP_API_TOKEN)fail('MarketApp API hali ulanmagan.',503);
+    if(!env.MARKETAPP_API_TOKEN)fail('Ijara katalogi hali ulanmagan.',503);
     const res=await request(apiOrigin+path,{method:body?'POST':'GET',headers:{Authorization:env.MARKETAPP_API_TOKEN,'Content-Type':'application/json'},
       body:body?JSON.stringify(body):undefined,redirect:'error',signal:AbortSignal.timeout(12000)});
-    if(!res.ok)fail('MarketApp so‘rovni qabul qilmadi.',503);
+    if(!res.ok)fail('Ijara katalogidan javob olinmadi.',503);
     return res.json();
   }
   async function pages(path,count,until) {
@@ -51,7 +51,7 @@ export function partnerMarket({db,tx,env,request=fetch,signer=merchantSigner}) {
     for(let i=0;i<count;i++){
       const q=new URLSearchParams({limit:'100'});if(cursor)q.set('cursor',cursor);
       const data=await call(path+'?'+q);
-      if(!Array.isArray(data.items))fail('MarketApp javobi noto‘g‘ri.',502);
+      if(!Array.isArray(data.items))fail('Ijara katalogi javobini o‘qib bo‘lmadi.',502);
       rows.push(...data.items);if(until?.(rows)||!data.cursor||seen.has(data.cursor))break;
       cursor=data.cursor;seen.add(cursor);
     }
