@@ -69,19 +69,20 @@ export function partnerMarket({db,tx,env,request=fetch,signer=merchantSigner}) {
       source:'marketapp',price:Number(BigInt(n.price_per_day)*BigInt(100+markup))/1e11,
       baseNano:n.price_per_day,currency:'TON',minDays,maxDays,available:true,color:'#655475',image,motion};
   }
-  async function catalog(fresh=false) {
+  async function catalog() {
     if(!env.MARKETAPP_API_TOKEN)return [];
-    if(!fresh&&cache?.until>Date.now())return cache.rows;
+    if(cache?.until>Date.now())return cache.rows;
     if(catalogPending)return catalogPending;
     catalogPending=(async()=>{
-      const rows=(await pages('gifts/',Math.min(10,Math.max(1,Number(env.MARKETAPP_CATALOG_PAGES)||10)))).map(shape).filter(Boolean);
+      const maxPages=Math.min(100,Math.max(1,Number(env.MARKETAPP_CATALOG_PAGES)||100));
+      const rows=(await pages('gifts/',maxPages)).map(shape).filter(Boolean);
       cache={until:Date.now()+30000,rows};return rows;
     })();
     try{return await catalogPending}finally{catalogPending=null}
   }
   async function quote(user,b) {
     if(!billingReady)fail('Hamyonga ulanish hali sozlanmagan.',503);
-    const item=(await catalog(true)).find(p=>p.id===b.product_id);
+    const item=(await catalog()).find(p=>p.id===b.product_id);
     if(!item||!Number.isSafeInteger(b.days)||b.days<item.minDays||b.days>item.maxDays)fail('NFT yoki muddat o‘zgargan.');
     const {transaction:t}=await call(encodeURIComponent(item.address)+'/pay/',{duration:b.days*86400,price_per_day:item.baseNano,sale_during_rent:false});
     if(!Array.isArray(t?.messages)||!t.messages.length||t.messages.length>4||!Number.isSafeInteger(t.validUntil)||t.validUntil<=clock()+5)fail('Tranzaksiya eskirgan.');
