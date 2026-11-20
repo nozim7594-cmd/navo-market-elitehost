@@ -1,3 +1,4 @@
+import {tonPayments} from './ton-payments.mjs';
 import {partnerMarket} from './marketapp.mjs';
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
@@ -17,7 +18,7 @@ export function verifyTelegram(raw,token,now=Date.now()/1000){
  const date=Number(p.get('auth_date'));if(!Number.isFinite(date)||now-date>3600||date-now>30)throw Error('Sessiya eskirgan. Ilovani qayta oching.');
  const user=JSON.parse(p.get('user'));if(!Number.isSafeInteger(user.id)||user.id<=0)throw Error('Telegram foydalanuvchisi noto‘g‘ri.');return user;
 }
-export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=process.env,telegramFetch=fetch}={}){
+export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=process.env,telegramFetch=fetch,tonClient}={}){
  const db=new DatabaseSync(dbPath);db.exec(`PRAGMA journal_mode=WAL;PRAGMA foreign_keys=ON;
  CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,name TEXT NOT NULL,balance INTEGER NOT NULL DEFAULT 0 CHECK(balance>=0));
  CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,serial TEXT NOT NULL,kind TEXT NOT NULL,emoji TEXT NOT NULL,color TEXT NOT NULL,price INTEGER NOT NULL CHECK(price>0),enabled INTEGER NOT NULL DEFAULT 1);
@@ -29,12 +30,13 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  const now=()=>Math.floor(Date.now()/1000),fail=(message,status=400)=>{throw Object.assign(Error(message),{status})};
  function tx(fn){db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result}catch(e){db.exec('ROLLBACK');throw e}}
  const partner=partnerMarket({db,tx,env});
+ const deposits=tonPayments({db,tx,env,client:tonClient});
  function expire(){db.prepare("UPDATE rentals SET status='returning' WHERE status='active' AND ends_at<=?").run(now())}
  function auth(req){let tg;try{tg=verifyTelegram(req.headers['x-telegram-init-data'],env.BOT_TOKEN)}catch(e){fail(e.message,401)}db.prepare('INSERT INTO users(id,name) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name').run(tg.id,tg.first_name||'Foydalanuvchi');return {...db.prepare('SELECT * FROM users WHERE id=?').get(tg.id),admin:admins.includes(String(tg.id))}}
  async function telegram(method,body){if(!env.BOT_TOKEN)fail('Bot hali sozlanmagan.',503);const r=await telegramFetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await r.json();if(!r.ok||!data.ok)fail('Telegram to‘lov xizmatiga ulanib bo‘lmadi.',502);return data.result}
  async function parse(req){let body='';for await(const chunk of req){body+=chunk;if(body.length>16000)fail('So‘rov juda katta.',413)}try{return body?JSON.parse(body):{}}catch{fail('JSON noto‘g‘ri.')}}
  function catalog(){expire();return db.prepare("SELECT p.*,NOT EXISTS(SELECT 1 FROM rentals r WHERE r.product_id=p.id AND r.status IN ('pending','active','returning')) AS available FROM products p WHERE enabled=1 ORDER BY id DESC").all().map(p=>({...p,price:p.price/1e6,available:!!p.available}))}
- function paymentUpdate(id,approve){tx(()=>{const p=db.prepare('SELECT * FROM payments WHERE id=?').get(id);if(!p||p.status!=='pending')fail('To‘lov allaqachon ko‘rib chiqilgan.',409);if(p.method==='stars')fail('Stars Telegram tomonidan tasdiqlanadi.');db.prepare('UPDATE payments SET status=? WHERE id=?').run(approve?'approved':'rejected',id);if(approve)db.prepare('UPDATE users SET balance=balance+? WHERE id=?').run(p.credit,p.user_id)})}
+ function paymentUpdate(id,approve){tx(()=>{const p=db.prepare('SELECT * FROM payments WHERE id=?').get(id);if(!p||p.status!=='pending')fail('To‘lov allaqachon ko‘rib chiqilgan.',409);if(p.method!=='crypto')fail('Bu to‘lov avtomatik tasdiqlanadi.');db.prepare('UPDATE payments SET status=? WHERE id=?').run(approve?'approved':'rejected',id);if(approve)db.prepare('UPDATE users SET balance=balance+? WHERE id=?').run(p.credit,p.user_id)})}
  async function webhook(body){
  if(body.pre_checkout_query){const q=body.pre_checkout_query,p=db.prepare('SELECT * FROM payments WHERE invoice=?').get(q.invoice_payload);const ok=!!p&&p.status==='pending'&&p.method==='stars'&&p.user_id===q.from.id&&q.currency==='XTR'&&p.amount===q.total_amount;await telegram('answerPreCheckoutQuery',{pre_checkout_query_id:q.id,ok,...(!ok?{error_message:'To‘lov topilmadi yoki summa noto‘g‘ri.'}:{})})}
  const paid=body.message?.successful_payment;if(paid)tx(()=>{const p=db.prepare('SELECT * FROM payments WHERE invoice=?').get(paid.invoice_payload);if(!p||p.status!=='pending')return;if(p.method!=='stars'||p.user_id!==body.message.from.id||paid.currency!=='XTR'||paid.total_amount!==p.amount||!paid.telegram_payment_charge_id)fail('To‘lov ma’lumotlari mos emas.');db.prepare("UPDATE payments SET status='approved',charge=? WHERE id=?").run(paid.telegram_payment_charge_id,p.id);db.prepare('UPDATE users SET balance=balance+? WHERE id=?').run(p.credit,p.user_id)});
@@ -50,19 +52,22 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  result=await webhook(await parse(req));
  }else if(path.startsWith('/api/')){
  const raw=req.headers['x-telegram-init-data'];const user=raw?auth(req):null;
- if(path==='/api/bootstrap'&&req.method==='GET')result={products:[...await partner.catalog().catch(()=>[]),...catalog()],partner_enabled:!!env.MARKETAPP_API_TOKEN,user,config:{marketapp_checkout:partner.billingReady,crypto_wallet:env.CRYPTO_WALLET||'',stars_per_ton:Number(env.STARS_PER_TON)||null}};
+ if(path==='/api/bootstrap'&&req.method==='GET')result={products:[...await partner.catalog().catch(()=>[]),...catalog()],partner_enabled:!!env.MARKETAPP_API_TOKEN,user,config:{marketapp_checkout:partner.billingReady,crypto_wallet:env.CRYPTO_WALLET||'',ton_auto:deposits.enabled,stars_enabled:!!(env.BOT_TOKEN&&env.TELEGRAM_WEBHOOK_SECRET&&Number(env.STARS_PER_TON)>0),stars_per_ton:Number(env.STARS_PER_TON)||null}};
  else{
  if(!user)fail('Telegram orqali kiring.',401);
  const write=req.method==='POST';if(!write&&req.method!=='GET')fail('Usul topilmadi.',405);const b=write?await parse(req):{};
  if(path.startsWith('/api/admin')&&!user.admin)fail('Ruxsat yo‘q.',403);
- if(path==='/api/partner/quote'&&write)result=await partner.quote(user,b);
+ if(path==='/api/me'&&!write)result=user;
+ else if(path==='/api/partner/quote'&&write)result=await partner.quote(user,b);
  else if(path==='/api/partner/reconnect'&&write)result=partner.reconnect(user,b);
  else if(path==='/api/partner/rent'&&write)result=await partner.rent(user,b);
- else if(path==='/api/payments'&&!write)result=db.prepare('SELECT id,method,amount,reference,status,created_at FROM payments WHERE user_id=? ORDER BY id DESC LIMIT 100').all(user.id);
+ else if(path==='/api/payments'&&!write){deposits.expire();result=db.prepare('SELECT p.id,p.method,p.amount,p.reference,p.status,p.created_at,i.memo,i.expires_at,i.nano,i.wallet FROM payments p LEFT JOIN ton_invoices i ON i.payment_id=p.id WHERE p.user_id=? ORDER BY p.id DESC LIMIT 100').all(user.id);}
  else if(path==='/api/payments'&&write){
- const amount=Number(b.amount);if(!Number.isFinite(amount)||amount<=0||amount>100000)fail('Summa noto‘g‘ri.');
+ deposits.expire();const amount=Number(b.amount);if(!Number.isFinite(amount)||amount<=0||amount>100000)fail('Summa noto‘g‘ri.');
  if(db.prepare("SELECT count(*) AS n FROM payments WHERE user_id=? AND status='pending'").get(user.id).n>=5)fail('Avval kutilayotgan to‘lovlarni yakunlang.',429);
- if(b.method==='crypto'){
+ if(b.method==='ton'){result=deposits.create(user,amount);
+ }else if(b.method==='crypto'){
+ if(env.CRYPTO_MANUAL_ENABLED!=='true')fail('TON avtomatik hisobini yarating.',400);
  if(!env.CRYPTO_WALLET)fail('Kripto hamyon hali sozlanmagan.',503);
  let reference=String(b.reference||'').trim();if(/^[a-f0-9]{64}$/i.test(reference))reference=reference.toLowerCase();if(!/^([a-f0-9]{64}|[A-Za-z0-9_-]{43}=?)$/.test(reference))fail('TON tranzaksiya hashini kiriting.');
  if(db.prepare("SELECT id FROM payments WHERE method='crypto' AND reference=?").get(reference))fail('Bu tranzaksiya allaqachon yuborilgan.',409);const credit=Math.round(amount*1e6);if(credit<1)fail('Summa juda kichik.');try{const r=db.prepare("INSERT INTO payments(user_id,method,amount,credit,reference,created_at) VALUES(?,'crypto',?,?,?,?)").run(user.id,amount,credit,reference,now());result={id:Number(r.lastInsertRowid),status:'pending'}}catch(e){if(e.code?.includes('CONSTRAINT'))fail('Bu tranzaksiya allaqachon yuborilgan.',409);throw e}
@@ -86,8 +91,8 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  }
  res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(result));
  }catch(e){res.writeHead(e.status||500,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify({error:e.status?e.message:'Server xatosi. Qayta urinib ko‘ring.'}))}};
- const polling=setInterval(()=>partner.reconcile().catch(()=>{}),15000);polling.unref();
- return {handler,db,close:()=>{clearInterval(polling);db.close()}};
+ const polling=setInterval(()=>{partner.reconcile().catch(()=>{});deposits.reconcile().catch(()=>console.error('TON reconciliation unavailable; retrying next cycle.'))},15000);polling.unref();
+ return {handler,db,close:()=>{clearInterval(polling);deposits.close();db.close()}};
 }
 export function startServer(){
  try{process.loadEnvFile(root+'.env')}catch(error){if(error.code!=='ENOENT')throw error}

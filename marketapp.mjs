@@ -34,7 +34,7 @@ export function partnerMarket({db,tx,env,request=fetch,signer=merchantSigner}) {
     chain_tx TEXT,link TEXT,ends_at INTEGER,created INTEGER NOT NULL);
     CREATE UNIQUE INDEX IF NOT EXISTS marketapp_asset_reserved ON marketapp_orders(address)
     WHERE state IN ('sending','checking','connecting','needs_link','active');`);
-  let cache,working=false;
+  let cache,catalogPending,working=false;
   const markup=Number(env.MARKETAPP_MARKUP_PERCENT||10);
   const reserve=Number(env.MARKETAPP_NETWORK_RESERVE_NANO);
   const billingReady=Boolean(env.MARKETAPP_API_TOKEN&&env.MARKETAPP_WALLET_ADDRESS&&env.MARKETAPP_WALLET_MNEMONIC&&Number.isSafeInteger(reserve)&&reserve>0);
@@ -72,8 +72,12 @@ export function partnerMarket({db,tx,env,request=fetch,signer=merchantSigner}) {
   async function catalog(fresh=false) {
     if(!env.MARKETAPP_API_TOKEN)return [];
     if(!fresh&&cache?.until>Date.now())return cache.rows;
-    const rows=(await pages('gifts/',3)).map(shape).filter(Boolean);
-    cache={until:Date.now()+30000,rows};return rows;
+    if(catalogPending)return catalogPending;
+    catalogPending=(async()=>{
+      const rows=(await pages('gifts/',Math.min(10,Math.max(1,Number(env.MARKETAPP_CATALOG_PAGES)||10)))).map(shape).filter(Boolean);
+      cache={until:Date.now()+30000,rows};return rows;
+    })();
+    try{return await catalogPending}finally{catalogPending=null}
   }
   async function quote(user,b) {
     if(!billingReady)fail('Hamyonga ulanish hali sozlanmagan.',503);

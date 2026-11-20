@@ -20,3 +20,35 @@ gift-motion.running{opacity:1}
 gift-motion canvas{display:block;width:78%!important;height:78%!important;position:absolute;left:11%;top:11%;object-fit:contain}
 .hero-art gift-motion{inset:9% auto;width:auto;height:82%;aspect-ratio:1;border-radius:18px;transform:rotate(6deg)}
 @media(prefers-reduced-motion:reduce){gift-motion{display:none}}
+
+/* Navo: luminous violet, spacious mobile cards and a focused payment flow. */
+:root{--bg:#0c0d14;--panel:#161824;--line:#2a2d40;--muted:#a6acc2;--accent:#b7a6ff}
+body{background:radial-gradient(ellipse at 78% -10%,#282248 0,transparent 55%) var(--bg)}
+header{background:#0e101ad9;backdrop-filter:blur(18px)}
+.brand-icon,.primary{background:linear-gradient(135deg,#c8baff,#9c87f5);color:#20153f}
+.primary{min-height:46px;box-shadow:0 6px 20px #8c68eb25;transition:transform .18s,filter .18s}
+.primary:hover{filter:brightness(1.08);transform:translateY(-1px)}
+button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+nav button.active{color:#ddd3ff;background:linear-gradient(90deg,#3c315b,#252138)}
+nav button.active .ico{color:#c9b6ff}.brand-label{color:#c9b6ff}
+.hero{min-height:290px;padding:34px;border-color:#594578;background:radial-gradient(ellipse at 82% 40%,color-mix(in srgb,var(--feature) 60%,#302449),transparent 60%),linear-gradient(115deg,#21192f,#37234c);box-shadow:inset 0 1px 0 #ffffff12,0 18px 60px #0002}
+.hero h2{font-size:clamp(32px,4vw,52px);max-width:550px}.hero .eyebrow{color:#d2bfff}.hero p{font-size:14px;margin:14px 0;color:#c4b7d5}
+.hero-price{display:block;color:white;font-size:22px;font-weight:800;margin:16px 0}.hero-price small{font-size:14px;font-weight:500;color:#c4b7d5}
+.hero .primary{background:#e1d6ff;color:#2c1946}.hero-art img{border:1px solid #ffffff24;box-shadow:0 20px 45px #05020c44}
+.card{border-radius:21px;padding:8px;background:linear-gradient(150deg,#232536,#171925);border-color:#313447;transition:transform .22s,box-shadow .22s,border-color .22s}
+.card:hover{border-color:#9d83dd;box-shadow:0 12px 28px #0004}.card:focus-visible{outline:2px solid #c2acff;outline-offset:3px}
+.card .art{border-radius:15px}.badge{font-size:10px;letter-spacing:.4px;max-width:calc(100% - 45px)}.heart{width:32px;height:32px}.heart[aria-pressed=true]{color:#ffacd4}
+.price{color:#e0d5ff;font-size:18px}.price small{font-size:12px}.rent-icon{background:#392c53;color:#d9c8ff;border-radius:9px}.card-info{padding:15px 8px 7px}.meta{color:#a6acc2}
+.tabs button.selected,.collection-strip .selected{background:#322747;border-color:#6f559b;color:#e3d1ff}
+.collection-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 0 18px;scrollbar-width:thin;scrollbar-color:#49405d transparent}
+.collection-strip button{flex:none;border:1px solid var(--line);border-radius:22px;padding:10px 15px;font-size:13px;color:#b9bfd1;background:#171925}
+.load-more{display:block;margin:28px auto;min-width:190px}.load-more[hidden]{display:none}
+.eyebrow{color:#bfb0e8}.panel{border-radius:22px;background:linear-gradient(145deg,#1b1d2b,#151723)}
+.wallet-layout{align-items:start}.balance-panel{position:relative;overflow:hidden;min-height:295px;background:radial-gradient(circle at 100% 0,#7454b052,transparent 65%),linear-gradient(135deg,#302442,#1b1c2e);border-color:#58446f}
+.balance-panel:after{content:'◇';position:absolute;font-size:230px;color:#ffffff06;right:-20px;bottom:-65px;pointer-events:none;transform:rotate(15deg)}
+.balance-top{display:flex;justify-content:space-between;align-items:center}.wallet-seal{font-size:32px;color:#d1bdff}.large-balance{color:#f4edff;font-size:clamp(36px,4vw,52px);letter-spacing:-2px}.large-balance small{font-size:18px;color:#b7a6d3;letter-spacing:0}
+.balance-panel p{color:#c5bad7;font-size:14px}.wallet-note{display:flex;gap:24px;border-top:1px solid #ffffff18;padding-top:18px;color:#ddccff;font-weight:700}
+.payment-methods{padding:0;border:0;display:flex;gap:10px;margin:0;min-width:0}.payment-methods legend{font-size:14px;color:var(--muted);margin-bottom:10px}.payment-methods label{flex:1;position:relative;cursor:pointer}.payment-methods input{position:absolute;opacity:0;width:1px;height:1px}.payment-methods span{display:grid;gap:5px;padding:16px 12px;border:1px solid #3b3b52;border-radius:13px;background:#202232}.payment-methods b{font-size:16px}.payment-methods small{font-size:12px}.payment-methods input:checked+span{border-color:#b99bff;background:#352b4e;color:#e2d1ff;box-shadow:0 0 0 1px #b99bff}.payment-methods input:focus-visible+span{outline:2px solid white;outline-offset:3px}.payment-methods input:disabled+span{opacity:.4;cursor:not-allowed}
+.amount-presets{display:flex;gap:8px}.amount-presets button{flex:1;border:1px solid #393b52;background:#222436;border-radius:9px;padding:10px}.amount-presets button:hover{border-color:#b7a6ff}.history-title{display:flex;align-items:center;justify-content:space-between;gap:10px}.history-title h2{margin:0}.payment-symbol{display:grid;place-items:center;flex:none;background:#302940;color:#d8c5ff;border-radius:13px;width:42px;height:42px;font-size:24px}.payment-detail{flex:1}.payment-row small{font-size:12px}.pill{background:#353044;color:#d6caee}.pill.success{background:#183c31;color:#97e3c3}.invoice-mark{font-size:44px;color:#bca6ff}.copy-value{margin:9px 0 18px;font-size:13px}.pay-link{display:block;text-align:center;margin-top:18px}.invoice-mark~h2{font-size:34px}#invoice-status{color:#cbb7ff;line-height:1.6}.stack label{font-size:14px}.hint{font-size:13px}.secondary{min-height:40px}
+@media(max-width:760px){.hero{min-height:245px;padding:22px 18px}.hero h2{font-size:29px;letter-spacing:-1px}.hero p{font-size:12px;max-width:170px}.hero-price{font-size:18px}.hero-art{width:41%;right:2%}.hero-art img{transform:rotate(8deg)}.grid{gap:12px}.card{border-radius:18px}.card-info{padding:12px 5px 5px}.item-title{font-size:14px}.meta{font-size:12px}.price{font-size:16px}.price small{display:block;font-size:11px;margin-top:3px}.badge{font-size:8px}.collection-strip button{font-size:12px}.two-col{gap:0}.balance-panel{min-height:260px}.payment-row{flex-wrap:wrap;gap:9px}.history-title h2{font-size:19px}.payment-methods small{font-size:11px}aside{padding-bottom:env(safe-area-inset-bottom);height:calc(72px + env(safe-area-inset-bottom))}footer{padding-bottom:calc(95px + env(safe-area-inset-bottom))}#toast{bottom:calc(90px + env(safe-area-inset-bottom))}}
+@media(prefers-reduced-motion:no-preference){.hero-art img{animation:gentle-float 6s ease-in-out infinite}.card{animation:card-in .35s ease both}@keyframes gentle-float{50%{translate:0 -8px}}@keyframes card-in{from{opacity:0;translate:0 8px}to{opacity:1;translate:0 0}}}
