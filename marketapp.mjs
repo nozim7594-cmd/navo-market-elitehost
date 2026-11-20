@@ -1,7 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {Address,Cell,loadStateInit,internal,SendMode,TonClient,WalletContractV4} from '@ton/ton';
-import {mnemonicToPrivateKey} from '@ton/crypto';
+import {Address,Cell,loadStateInit,internal,SendMode,TonClient,WalletContractV4,WalletContractV5R1} from '@ton/ton';
+import {mnemonicToPrivateKey,mnemonicValidate} from '@ton/crypto';
 
 const apiOrigin='https://api.marketapp.org/v1/rent/';
 const snapshot=JSON.parse(readFileSync(new URL('./public/catalog.json',import.meta.url)));
@@ -10,19 +10,34 @@ const clock=()=>Math.floor(Date.now()/1000);
 const fail=(message,status=409)=>{throw Object.assign(new Error(message),{status})};
 const idFor=address=>-parseInt(createHash('sha256').update(address).digest('hex').slice(0,12),16);
 
-export async function merchantSigner(env) {
-  const key=await mnemonicToPrivateKey(env.MARKETAPP_WALLET_MNEMONIC.trim().split(/\s+/));
-  const wallet=WalletContractV4.create({workchain:0,publicKey:key.publicKey});
-  if(!wallet.address.equals(Address.parse(env.MARKETAPP_WALLET_ADDRESS)))fail('API hamyoni sozlamalarini tekshiring.',503);
-  const rpc=new TonClient({endpoint:'https://toncenter.com/api/v2/jsonRPC',apiKey:env.TONCENTER_API_KEY});
-  const contract=rpc.open(wallet);
+export function merchantWallet(publicKey,address) {
+  let expected;
+  try{
+    if(Address.isFriendly(address)&&Address.parseFriendly(address).isTestOnly)throw Error();
+    expected=Address.parse(address);
+  }catch{fail('Mainnet hamyon manzilini tekshiring.',503);}
+  // Match the configured address, never silently switch to a different wallet version.
+  const wallets=[WalletContractV4.create({workchain:0,publicKey}),
+    WalletContractV5R1.create({publicKey,walletId:{networkGlobalId:-239,
+      context:{workchain:0,walletVersion:'v5r1',subwalletNumber:0}}})];
+  const wallet=wallets.find(w=>w.address.equals(expected));
+  if(!wallet)fail('Hamyon manzili va TON tiklash iborasi mos emas. V4R2 yoki W5 sozlamalarini tekshiring.',503);
+  return wallet;
+}
+
+export async function merchantSigner(env,{rpc}={}) {
+  const words=String(env.MARKETAPP_WALLET_MNEMONIC||'').trim().split(/\s+/);
+  if(!await mnemonicValidate(words))fail('TON hamyoni tiklash iborasini tekshiring.',503);
+  const key=await mnemonicToPrivateKey(words);
+  const wallet=merchantWallet(key.publicKey,env.MARKETAPP_WALLET_ADDRESS);
+  const contract=(rpc||new TonClient({endpoint:'https://toncenter.com/api/v2/jsonRPC',apiKey:env.TONCENTER_API_KEY})).open(wallet);
   return async transaction=>{
     const messages=transaction.messages.map(m=>internal({
       to:Address.parse(m.address),value:BigInt(m.amount),bounce:Address.isFriendly(m.address)?Address.parseFriendly(m.address).isBounceable:true,
       body:m.payload?Cell.fromBase64(m.payload):undefined,
       init:m.stateInit?loadStateInit(Cell.fromBase64(m.stateInit).beginParse()):undefined
     }));
-    await contract.sendTransfer({seqno:await contract.getSeqno(),secretKey:key.secretKey,
+    await contract.sendTransfer({seqno:await contract.getSeqno(),secretKey:key.secretKey,authType:'external',
       timeout:transaction.validUntil,messages,sendMode:SendMode.PAY_GAS_SEPARATELY});
   };
 }
