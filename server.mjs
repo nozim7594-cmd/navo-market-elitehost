@@ -42,7 +42,7 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  async function webhook(body){
  if(body.pre_checkout_query){const q=body.pre_checkout_query,p=db.prepare('SELECT * FROM payments WHERE invoice=?').get(q.invoice_payload);const ok=!!p&&p.status==='pending'&&p.method==='stars'&&p.user_id===q.from.id&&q.currency==='XTR'&&p.amount===q.total_amount;await telegram('answerPreCheckoutQuery',{pre_checkout_query_id:q.id,ok,...(!ok?{error_message:'To‘lov topilmadi yoki summa noto‘g‘ri.'}:{})})}
  const paid=body.message?.successful_payment;if(paid)tx(()=>{const p=db.prepare('SELECT * FROM payments WHERE invoice=?').get(paid.invoice_payload);if(!p||p.status!=='pending')return;if(p.method!=='stars'||p.user_id!==body.message.from.id||paid.currency!=='XTR'||paid.total_amount!==p.amount||!paid.telegram_payment_charge_id)fail('To‘lov ma’lumotlari mos emas.');db.prepare("UPDATE payments SET status='approved',charge=? WHERE id=?").run(paid.telegram_payment_charge_id,p.id);db.prepare('UPDATE users SET balance=balance+? WHERE id=?').run(p.credit,p.user_id)});
- if(body.message?.text==='/start'&&env.PUBLIC_URL)await telegram('sendMessage',{chat_id:body.message.chat.id,text:'Navo Market’ga xush kelibsiz! Noyob kolleksiyalarni kashf qiling.',reply_markup:{inline_keyboard:[[{text:'Bozorni ochish',web_app:{url:env.PUBLIC_URL}}]]}});
+ if(body.message?.text==='/start'&&env.PUBLIC_URL)await telegram('sendMessage',{chat_id:body.message.chat.id,text:'✨ Navo Market’ga xush kelibsiz!\n\n🎁 Noyob Telegram sovg‘alarini ko‘ring, o‘zingizga mos ijara taklifini tanlang va buyurtmangizni shu yerda kuzating.\n\nBozorni ochish uchun pastdagi tugmani bosing.',reply_markup:{inline_keyboard:[[{text:'🎁 Bozorni ochish',web_app:{url:env.PUBLIC_URL}}]]}});
  return {ok:true};
  }
  const handler=async(req,res)=>{try{
@@ -54,7 +54,11 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  result=await webhook(await parse(req));
  }else if(path.startsWith('/api/')){
  const raw=req.headers['x-telegram-init-data'];const user=raw?auth(req):null;
- if(path==='/api/bootstrap'&&req.method==='GET')result={products:[...await partner.catalog().catch(()=>[]),...catalog()],partner_enabled:!!env.MARKETAPP_API_TOKEN,user,config:{marketapp_checkout:partner.billingReady,crypto_wallet:env.CRYPTO_WALLET||'',ton_auto:deposits.enabled,stars_enabled:!!(env.BOT_TOKEN&&env.TELEGRAM_WEBHOOK_SECRET&&stars),stars_per_ton:stars?.starsPerTon||null,stars_ton_per_100:stars?.tonPer100||null,stars_credit_micro:stars?.microPerStar||null}};
+ if(path==='/api/bootstrap'&&req.method==='GET'){
+ let partnerProducts=[],partnerEnabled=false;
+ if(env.MARKETAPP_API_TOKEN)try{partnerProducts=await partner.catalog();partnerEnabled=true}catch{}
+ result={products:[...partnerProducts,...catalog()],partner_enabled:partnerEnabled,user,config:{marketapp_checkout:partner.billingReady,crypto_wallet:env.CRYPTO_WALLET||'',ton_auto:deposits.enabled,stars_enabled:!!(env.BOT_TOKEN&&env.TELEGRAM_WEBHOOK_SECRET&&stars),stars_per_ton:stars?.starsPerTon||null,stars_ton_per_100:stars?.tonPer100||null,stars_credit_micro:stars?.microPerStar||null}};
+ }
  else{
  if(!user)fail('Telegram orqali kiring.',401);
  const write=req.method==='POST';if(!write&&req.method!=='GET')fail('Usul topilmadi.',405);const b=write?await parse(req):{};
