@@ -40,13 +40,15 @@ Node.js 22.13+. Откройте http://localhost:3000 для просмотра
 
 Сгенерировать секрет: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
 
-После настройки HTTPS и PUBLIC_URL:
+После настройки HTTPS, PUBLIC_URL, BOT_TOKEN и TELEGRAM_WEBHOOK_SECRET перезапустите сервер. Он автоматически установит webhook и кнопку Bozor, проверит результат и выведет `Telegram bot connected: webhook and Bozor menu verified.` Для отдельного управления webhook задайте `TELEGRAM_AUTO_SETUP=false`.
+
+Необязательная команда для shell-терминала (не для консоли запущенного приложения в EliteHost):
 
 ```bash
 node --env-file=.env scripts/configure-bot.mjs
 ```
 
-Скрипт устанавливает webhook и кнопку меню Bozor у вашего бота. `/start` отдаёт кнопку запуска приложения. В @BotFather задайте домен/настройки Mini App при необходимости. Запустите приложение из бота под ADMIN_IDS: в меню появится «Boshqaruv». Добавьте ваши настоящие активы. Сторонние активы с сайта-образца сюда не импортируются.
+`/start` отдаёт кнопку запуска приложения. В @BotFather задайте домен/настройки Mini App при необходимости. Запустите приложение из бота под ADMIN_IDS: в меню появится «Boshqaruv». Настройки с токенами сохраняйте в файле `.env` рядом с `index.js`; не вводите их в консоль приложения и не загружайте в GitHub.
 
 ## Продакшен
 

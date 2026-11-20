@@ -1,4 +1,5 @@
 import {publicSettings,starsPricing} from './settings.mjs';
+import {autoConfigureTelegram} from './telegram-setup.mjs';
 import {tonPayments} from './ton-payments.mjs';
 import {partnerMarket} from './marketapp.mjs';
 import http from 'node:http';
@@ -106,7 +107,10 @@ export function startServer(){
  const app=makeApp({env,dbPath:env.DB_PATH||root+'navo.sqlite'});const server=http.createServer(app.handler);
  const port=Number(process.env.PORT || process.env.SERVER_PORT || 39292);
  server.on('close',()=>app.close());
- server.listen(port,'0.0.0.0',()=>console.log(`Navo Market server ready on port ${server.address().port}`));
+ server.listen(port,'0.0.0.0',()=>{
+  console.log(`Navo Market server ready on port ${server.address().port}`);
+  void autoConfigureTelegram(env);
+ });
  return server;
 }
 if(process.argv[1]===fileURLToPath(import.meta.url))startServer();
