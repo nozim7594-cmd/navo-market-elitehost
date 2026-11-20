@@ -89,4 +89,12 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  const polling=setInterval(()=>partner.reconcile().catch(()=>{}),15000);polling.unref();
  return {handler,db,close:()=>{clearInterval(polling);db.close()}};
 }
-if(process.argv[1]===fileURLToPath(import.meta.url)){const app=makeApp();const server=http.createServer(app.handler);const port=Number(process.env.PORT || process.env.SERVER_PORT || 39292);server.listen(port,'0.0.0.0',()=>console.log(`Navo Market server ready on port ${port}`));}
+export function startServer(){
+ try{process.loadEnvFile(root+'.env')}catch(error){if(error.code!=='ENOENT')throw error}
+ const app=makeApp();const server=http.createServer(app.handler);
+ const port=Number(process.env.PORT || process.env.SERVER_PORT || 39292);
+ server.on('close',()=>app.close());
+ server.listen(port,'0.0.0.0',()=>console.log(`Navo Market server ready on port ${server.address().port}`));
+ return server;
+}
+if(process.argv[1]===fileURLToPath(import.meta.url))startServer();

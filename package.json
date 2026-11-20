@@ -2,8 +2,9 @@
   "name": "navo-market",
   "version": "1.0.0",
   "type": "module",
+  "main": "index.js",
   "scripts": {
-    "start": "node --env-file-if-exists=.env server.mjs",
+    "start": "node index.js",
     "test": "node --test test/*.test.mjs",
     "build": "node scripts/build.mjs",
     "launch:check": "node --env-file-if-exists=.env scripts/elitehost-check.mjs",
