@@ -1,5 +1,5 @@
 import {randomBytes} from 'node:crypto';
-import {Address,TonClient} from '@ton/ton';
+import {Address,TonClient,beginCell} from '@ton/ton';
 
 // Only the public deposit address is needed. This module never signs transfers.
 export function tonPayments({db,tx,env,client,clock=()=>Math.floor(Date.now()/1000)}) {
@@ -24,6 +24,17 @@ export function tonPayments({db,tx,env,client,clock=()=>Math.floor(Date.now()/10
    db.prepare('INSERT INTO ton_invoices VALUES(?,?,?,?,?)').run(id,memo,wallet,nano,expires);
    return {id,status:'pending',memo,amount:micro/1e6,wallet:address.toString({bounceable:false}),expires_at:expires,transfer_url:'ton://transfer/'+address.toString({bounceable:false})+'?'+new URLSearchParams({amount:nano,text:memo})};
   });
+ }
+ function transaction(user,id){
+  if(!enabled)fail('TON avtomatik to‘lovlari hali sozlanmagan.',503);
+  expire();
+  const p=db.prepare('SELECT p.status,i.* FROM payments p JOIN ton_invoices i ON i.payment_id=p.id WHERE p.id=? AND p.user_id=?').get(id,user.id);
+  if(!p)fail('To‘lov topilmadi.',404);
+  if(p.status!=='pending'||p.expires_at<=clock())fail('Bu hisob yopilgan. To‘lov holatini yangilang.',409);
+  return {network:'-239',validUntil:Math.min(clock()+300,p.expires_at),messages:[{
+   address:Address.parse(p.wallet).toString({bounceable:false}),amount:p.nano,
+   payload:beginCell().storeUint(0,32).storeStringTail(p.memo).endCell().toBoc().toString('base64')
+  }]};
  }
  function receive(t){
   if(t.now>clock()-60||t.description?.type!=='generic'||t.description.aborted!==false)return;
@@ -61,5 +72,5 @@ export function tonPayments({db,tx,env,client,clock=()=>Math.floor(Date.now()/10
    else db.prepare('UPDATE ton_scan SET cursor_lt=?,cursor_hash=?,top_lt=? WHERE wallet=?').run(String(last.lt),last.hash().toString('base64'),String(top),wallet);
   }finally{running=false}
  }
- return {enabled,create,expire,reconcile,close:()=>{closed=true}};
+ return {enabled,create,transaction,expire,reconcile,close:()=>{closed=true}};
 }

@@ -34,3 +34,24 @@ test('configured Stars rate credits exact microTON and is frozen in each invoice
   expected+=amount*13000;assert.equal((await req('me')).data.balance,expected);
  }
 });
+
+test('TON Connect transaction uses the authenticated invoice and cannot change balances',async t=>{
+ const {req,db}=await fixture(t,{CRYPTO_WALLET:'0:'+'1'.repeat(64),TON_AUTO_PAYMENTS:'true',TONCENTER_API_KEY:'test'});
+ const invoice=(await req('payments',{method:'ton',amount:1.234567})).data;
+ assert.equal((await req('payments/ton-transaction',{id:invoice.id},null)).status,401);
+ await req('bootstrap',undefined,13);
+ assert.equal((await req('payments/ton-transaction',{id:invoice.id},13)).status,404);
+ const result=await req('payments/ton-transaction',{id:invoice.id,amount:'1',wallet:'attacker',memo:'fake'});
+ assert.equal(result.status,200);assert.equal(result.data.network,'-239');
+ assert.ok(result.data.validUntil<=Math.floor(Date.now()/1000)+300);
+ const {Cell,Address}=await import('@ton/ton');
+ const message=result.data.messages[0];assert.equal(message.amount,'1234567000');
+ assert.ok(Address.parse(message.address).equals(Address.parse(invoice.wallet)));
+ const body=Cell.fromBase64(message.payload).beginParse();assert.equal(body.loadUint(32),0);assert.equal(body.loadStringTail(),invoice.memo);
+ assert.equal((await req('me')).data.balance,0);
+ db.prepare("UPDATE payments SET status='approved' WHERE id=?").run(invoice.id);
+ assert.equal((await req('payments/ton-transaction',{id:invoice.id})).status,409);
+ const expired=(await req('payments',{method:'ton',amount:1})).data;
+ db.prepare('UPDATE ton_invoices SET expires_at=1 WHERE payment_id=?').run(expired.id);
+ assert.equal((await req('payments/ton-transaction',{id:expired.id})).status,409);
+});

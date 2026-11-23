@@ -1,4 +1,5 @@
 import './gift-motion.js';
+import {walletConnector} from './wallet-connect.js';
 const startupStarted=performance.now();
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let products=[],user=null,config={},marketLive=false,page='market',kind='all',query='',sort='new',free=false;
@@ -101,17 +102,52 @@ async function refreshPayments(){
  }catch{if($('#payment-sync'))$('#payment-sync').textContent='Aloqa tiklangach to‘lov holati yangilanadi.'}
  finally{paymentBusy=false}
 }
+let resumeInvoice=null,tonSending=false;
+const sentInvoices=new Set();
+const sentKey=id=>'navo-sent-'+user?.id+'-'+id;
+function wasSent(id){try{return sentInvoices.has(id)||sessionStorage.getItem(sentKey(id))==='1'}catch{return sentInvoices.has(id)}}
+async function updateConnectedWallet(){
+ try{
+  const ui=await walletConnector(),account=ui.account;
+  const label=$('#connected-address'),button=$('#connect-wallet'),disconnect=$('#disconnect-wallet');
+  if(label)label.textContent=account?account.address.slice(0,8)+'…'+account.address.slice(-6):'Tonkeeper yoki boshqa TON hamyonini tanlang';
+  if(button)button.textContent=account?'Hamyonni almashtirish':'Hamyonni ulash';
+  if(disconnect)disconnect.hidden=!account;
+  if(account&&resumeInvoice){const invoice=resumeInvoice;resumeInvoice=null;setTimeout(()=>openTonInvoice(invoice),200);}
+ }catch{if($('#connected-address'))$('#connected-address').textContent='Hamyon xizmatiga ulanib bo‘lmadi. Qayta urinib ko‘ring.';}
+}
+window.addEventListener('navo-wallet-change',updateConnectedWallet);
 function openTonInvoice(p){
  activeInvoice=p.id;
- const memo=p.memo||p.reference,nano=p.nano||String(Math.round(p.amount*1e6)*1000);
+ const memo=p.memo||p.reference,nano=p.nano||String(Math.round(p.amount*1e6)*1000),sent=wasSent(p.id);
  const url='https://app.tonkeeper.com/transfer/'+encodeURIComponent(p.wallet)+'?'+new URLSearchParams({amount:nano,text:memo});
- show(`<div class="invoice-mark">◇</div><span class="eyebrow">TON TO‘LOVI</span><h2>${ton(p.amount)} TON</h2><p id="invoice-status" role="status">Blokcheyn tasdig‘i kutilmoqda…</p><div id="invoice-actions"><p class="hint">TON mainnet tarmog‘ida aynan shu summa va izoh bilan yuboring. Izohsiz yoki boshqa summadagi o‘tkazma avtomatik hisoblanmaydi.</p><label class="stack">Qabul qiluvchi<input readonly value="${esc(p.wallet)}"></label><button class="copy-value secondary" data-copy="${esc(p.wallet)}">Manzilni nusxalash</button><label class="stack">To‘lov izohi<input readonly value="${esc(memo)}"></label><button class="copy-value secondary" data-copy="${esc(memo)}">Izohni nusxalash</button><a class="primary pay-link" href="${esc(url)}" target="_blank" rel="noopener">Tonkeeper’da to‘lash</a></div><p class="hint">Tasdiqlash odatda bir necha daqiqa davom etadi. Bu oynani yopishingiz mumkin — tekshirish serverda davom etadi.</p>`);
+ show(`<div class="invoice-mark">◇</div><span class="eyebrow">TON TO‘LOVI</span><h2>${ton(p.amount)} TON</h2><p id="invoice-status" role="status">${sent?'Tranzaksiya yuborildi. Blokcheyn tasdig‘i kutilmoqda…':'Hamyoningizda to‘lovni tasdiqlang.'}</p><div id="invoice-actions">${sent?'<p class="hint">Ushbu hisob uchun qayta pul yubormang. Balans tasdiqdan keyin yangilanadi.</p>':`<button class="primary pay-link" id="connected-pay">Hamyon orqali to‘lash</button><p class="hint">Summa va to‘lov izohi avtomatik kiritiladi. Hamyoningizda tasdiqlashingiz kerak.</p><details class="manual-transfer"><summary>Qo‘lda yuborish</summary><label class="stack">Qabul qiluvchi<input readonly value="${esc(p.wallet)}"></label><button class="copy-value secondary" data-copy="${esc(p.wallet)}">Manzilni nusxalash</button><label class="stack">To‘lov izohi<input readonly value="${esc(memo)}"></label><button class="copy-value secondary" data-copy="${esc(memo)}">Izohni nusxalash</button><a class="secondary pay-link" href="${esc(url)}" target="_blank" rel="noopener">Tonkeeper’da ochish</a><p class="hint">Aynan shu summa va izohni yuboring.</p></details>`}</div><p class="hint">Balans faqat blokcheyn tasdig‘idan keyin yangilanadi. Oynani yopishingiz mumkin.</p>`);
+ const button=$('#connected-pay');
+ if(button)button.onclick=async()=>{
+  if(tonSending)return;tonSending=true;button.disabled=true;
+  try{
+   const ui=await walletConnector();
+   if(!ui.account){resumeInvoice=p;$('#modal').close();await ui.openModal();return;}
+   if(ui.account.chain!=='-239')throw Error('Hamyoningizni TON mainnet tarmog‘iga o‘tkazing.');
+   const transaction=await api('payments/ton-transaction',{id:p.id});
+   transaction.from=ui.account.address;
+   $('#modal').close();
+   await ui.sendTransaction(transaction);
+   sentInvoices.add(p.id);try{sessionStorage.setItem(sentKey(p.id),'1')}catch{}
+   if(page==='wallet')openTonInvoice(p);
+   toast('Tranzaksiya yuborildi. Tasdiq kutilmoqda.');await refreshPayments();
+  }catch(error){toast(error?.message?.includes('mainnet')?error.message:'To‘lov tasdiqlanmadi. Qayta yuborishdan oldin hamyon tarixini tekshiring.');}
+  finally{tonSending=false;button.disabled=false;}
+ };
  refreshPayments();
 }
 async function wallet(){
  if(user)try{paymentRows=await api('payments')}catch(e){toast(e.message)}
  if(page!=='wallet')return;
- $('#main').innerHTML=heading('Hamyon','To‘ldiring. Tasdiqni kuzating. Ijarani boshlang.')+`<div class="two-col wallet-layout"><section class="panel balance-panel"><div class="balance-top"><span class="eyebrow">SIZNING BALANSINGIZ</span><span class="wallet-seal">◇</span></div><div class="large-balance"><span data-wallet-balance>${ton((user?.balance||0)/1e6)}</span> <small>TON</small></div><p>Sevimli sovg‘angiz uchun tayyor.</p><div class="wallet-note">★ Stars <span>◇ TON</span></div><p class="hint" id="payment-sync">Tasdiqlangan to‘lovdan keyin balans avtomatik yangilanadi.</p></section><form class="panel stack" id="topup"><h2>Balansni to‘ldirish</h2><fieldset class="payment-methods"><legend>To‘lov usuli</legend><label><input type="radio" name="method" value="stars" ${config.stars_enabled?'checked':''} ${!config.stars_enabled?'disabled':''}><span><b>★ Stars</b><small>Telegram orqali</small></span></label><label><input type="radio" name="method" value="ton" ${!config.stars_enabled&&config.ton_auto?'checked':''} ${!config.ton_auto?'disabled':''}><span><b>◇ TON</b><small>TON hamyonidan</small></span></label></fieldset><label>Summa <input name="amount" type="number" inputmode="decimal" required></label><div class="amount-presets" id="amount-presets"></div><div class="summary">Balansga tushadi <b id="credit-preview">—</b></div><p class="hint" id="rate-note"></p>${!config.stars_enabled||!config.ton_auto?`<p class="hint">${!config.stars_enabled?'Stars to‘lovlari hali ulanmagan. ':''}${!config.ton_auto?'TON to‘lovlari hali ulanmagan.':''}</p>`:''}<button class="primary" ${!config.stars_enabled&&!config.ton_auto?'disabled':''}>To‘lovni davom ettirish</button><p class="hint">Balans faqat tasdiqlangan to‘lov bo‘yicha to‘ldiriladi.</p></form></div><section class="panel"><div class="history-title"><h2>To‘lovlar tarixi</h2><button class="secondary" id="refresh-payments">Yangilash</button></div><div id="payment-history">${paymentHistory()}</div></section>`;
+ $('#main').innerHTML=heading('Hamyon','To‘ldiring. Tasdiqni kuzating. Ijarani boshlang.')+`<div class="two-col wallet-layout"><section class="panel balance-panel"><div class="balance-top"><span class="eyebrow">SIZNING BALANSINGIZ</span><span class="wallet-seal">◇</span></div><div class="large-balance"><span data-wallet-balance>${ton((user?.balance||0)/1e6)}</span> <small>TON</small></div><p>Sevimli sovg‘angiz uchun tayyor.</p><div class="wallet-note">★ Stars <span>◇ TON</span></div><div class="connected-wallet"><span class="eyebrow">TON CONNECT</span><p id="connected-address" aria-live="polite">Hamyonni ulash orqali tezroq to‘lang</p><button class="primary" id="connect-wallet">Hamyonni ulash</button><button class="secondary" id="disconnect-wallet" hidden>Uzish</button></div><p class="hint" id="payment-sync">Tasdiqlangan to‘lovdan keyin balans avtomatik yangilanadi.</p></section><form class="panel stack" id="topup"><h2>Balansni to‘ldirish</h2><fieldset class="payment-methods"><legend>To‘lov usuli</legend><label><input type="radio" name="method" value="stars" ${config.stars_enabled?'checked':''} ${!config.stars_enabled?'disabled':''}><span><b>★ Stars</b><small>Telegram orqali</small></span></label><label><input type="radio" name="method" value="ton" ${!config.stars_enabled&&config.ton_auto?'checked':''} ${!config.ton_auto?'disabled':''}><span><b>◇ TON</b><small>TON hamyonidan</small></span></label></fieldset><label>Summa <input name="amount" type="number" inputmode="decimal" required></label><div class="amount-presets" id="amount-presets"></div><div class="summary">Balansga tushadi <b id="credit-preview">—</b></div><p class="hint" id="rate-note"></p>${!config.stars_enabled||!config.ton_auto?`<p class="hint">${!config.stars_enabled?'Stars to‘lovlari hali ulanmagan. ':''}${!config.ton_auto?'TON to‘lovlari hali ulanmagan.':''}</p>`:''}<button class="primary" ${!config.stars_enabled&&!config.ton_auto?'disabled':''}>To‘lovni davom ettirish</button><p class="hint">Balans faqat tasdiqlangan to‘lov bo‘yicha to‘ldiriladi.</p></form></div><section class="panel"><div class="history-title"><h2>To‘lovlar tarixi</h2><button class="secondary" id="refresh-payments">Yangilash</button></div><div id="payment-history">${paymentHistory()}</div></section>`;
+ updateConnectedWallet();
+ $('#connect-wallet').onclick=async()=>{try{const ui=await walletConnector();if(ui.connected)await ui.disconnect();await ui.openModal();}catch{toast('Hamyonni ulab bo‘lmadi. Qayta urinib ko‘ring.')}};
+ $('#disconnect-wallet').onclick=async()=>{try{await (await walletConnector()).disconnect();await updateConnectedWallet();}catch{toast('Qayta urinib ko‘ring.')}};
  const form=$('#topup'),amount=form.elements.amount;
  function preview(){const stars=form.elements.method.value==='stars';$('#credit-preview').textContent=Number(amount.value)>0?ton(stars?(config.stars_credit_micro?Number(amount.value)*config.stars_credit_micro/1e6:Number(amount.value)/config.stars_per_ton):Number(amount.value))+' TON':'—'}
  function method(){const stars=form.elements.method.value==='stars';amount.min=stars?'1':'0.01';amount.max=stars?'100000':'10000';amount.step=stars?'1':'0.000001';amount.value=stars?'100':'1';$('#amount-presets').innerHTML=(stars?[100,250,500,1000]:[1,2,5,10]).map(n=>`<button type="button" data-amount="${n}">${n}</button>`).join('');$('#rate-note').textContent=stars?`100 Stars = ${ton(config.stars_ton_per_100||100/config.stars_per_ton)} TON. Kurs to‘lov yaratilganda belgilanadi.`:'TON mainnet · Komissiya hamyon tomonidan alohida ko‘rsatiladi.';preview()}

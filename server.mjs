@@ -48,7 +48,11 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  }
  const handler=async(req,res)=>{try{
  const url=new URL(req.url,'http://localhost');const path=url.pathname;let result;
- if(path==='/healthz' && req.method==='GET'){db.prepare('SELECT 1').get();result={ok:true,service:'navo-market'};}else if(path==='/api/telegram/webhook'){
+ if(path==='/tonconnect-manifest.json'&&req.method==='GET'){
+ const origin=new URL(env.PUBLIC_URL||'https://gift.novastax.uz').origin;
+ res.setHeader('Access-Control-Allow-Origin','*');
+ result={url:origin,name:'Navo Market',iconUrl:origin+'/wallet-icon.png'};
+ }else if(path==='/healthz' && req.method==='GET'){db.prepare('SELECT 1').get();result={ok:true,service:'navo-market'};}else if(path==='/api/telegram/webhook'){
  if(req.method!=='POST')fail('Usul topilmadi.',405);
  const secret=env.TELEGRAM_WEBHOOK_SECRET,given=req.headers['x-telegram-bot-api-secret-token'];
  if(!secret||typeof given!=='string'||Buffer.byteLength(secret)!==Buffer.byteLength(given)||!timingSafeEqual(Buffer.from(secret),Buffer.from(given)))fail('Ruxsat yo‘q.',403);
@@ -69,6 +73,10 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  else if(path==='/api/partner/reconnect'&&write)result=partner.reconnect(user,b);
  else if(path==='/api/partner/rent'&&write)result=await partner.rent(user,b);
  else if(path==='/api/payments'&&!write){deposits.expire();result=db.prepare('SELECT p.id,p.method,p.amount,p.reference,p.status,p.created_at,i.memo,i.expires_at,i.nano,i.wallet FROM payments p LEFT JOIN ton_invoices i ON i.payment_id=p.id WHERE p.user_id=? ORDER BY p.id DESC LIMIT 100').all(user.id);}
+ else if(path==='/api/payments/ton-transaction'&&write){
+ if(!Number.isSafeInteger(b.id)||b.id<=0)fail('To‘lov raqamini tekshiring.');
+ result=deposits.transaction(user,b.id);
+ }
  else if(path==='/api/payments'&&write){
  deposits.expire();const amount=Number(b.amount);if(!Number.isFinite(amount)||amount<=0||amount>100000)fail('Summa noto‘g‘ri.');
  if(db.prepare("SELECT count(*) AS n FROM payments WHERE user_id=? AND status='pending'").get(user.id).n>=5)fail('Avval kutilayotgan to‘lovlarni yakunlang.',429);
@@ -94,7 +102,7 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  }
  }else{
  if(req.method!=='GET'&&req.method!=='HEAD')fail('Usul topilmadi.',405);
- const artAsset=/^\/art\/(pepe|cap|heart|shard|bear|rose|ring|ball|ma-[A-Za-z0-9_-]{48})\.webp$/.test(path);const animation=/^\/motion\/[A-Za-z0-9_-]{48}\.tgs$/.test(path);const files={'/gift-motion.js':['gift-motion.js','text/javascript'],'/vendor/lottie.js':['vendor/lottie.js','text/javascript'],'/catalog.json':['catalog.json','application/json'],'/':['index.html','text/html; charset=utf-8'],'/market':['index.html','text/html; charset=utf-8'],'/index.html':['index.html','text/html; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8']};const f=animation?[path.slice(1),'application/octet-stream']:artAsset?[path.slice(1),'image/webp']:files[path];if(!f)fail('Topilmadi.',404);const data=await readFile(root+'public/'+f[0]);res.writeHead(200,{'Content-Type':f[1],'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});return res.end(req.method==='HEAD'?undefined:data);
+ const artAsset=/^\/art\/(pepe|cap|heart|shard|bear|rose|ring|ball|ma-[A-Za-z0-9_-]{48})\.webp$/.test(path);const animation=/^\/motion\/[A-Za-z0-9_-]{48}\.tgs$/.test(path);const files={'/wallet-connect.js':['wallet-connect.js','text/javascript'],'/wallet-icon.png':['wallet-icon.png','image/png'],'/vendor/tonconnect-ui.js':['vendor/tonconnect-ui.js','text/javascript'],'/gift-motion.js':['gift-motion.js','text/javascript'],'/vendor/lottie.js':['vendor/lottie.js','text/javascript'],'/catalog.json':['catalog.json','application/json'],'/':['index.html','text/html; charset=utf-8'],'/market':['index.html','text/html; charset=utf-8'],'/index.html':['index.html','text/html; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8']};const f=animation?[path.slice(1),'application/octet-stream']:artAsset?[path.slice(1),'image/webp']:files[path];if(!f)fail('Topilmadi.',404);const data=await readFile(root+'public/'+f[0]);res.writeHead(200,{'Content-Type':f[1],'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});return res.end(req.method==='HEAD'?undefined:data);
  }
  res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(result));
  }catch(e){res.writeHead(e.status||500,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify({error:e.status?e.message:'Server xatosi. Qayta urinib ko‘ring.'}))}};
