@@ -1,6 +1,7 @@
 import {publicSettings,starsPricing} from './settings.mjs';
 import {autoConfigureTelegram} from './telegram-setup.mjs';
 import {tonPayments} from './ton-payments.mjs';
+import {notifications} from './notifications.mjs';
 import {partnerMarket} from './marketapp.mjs';
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
@@ -35,6 +36,8 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  const partner=partnerMarket({db,tx,env});
  const deposits=tonPayments({db,tx,env,client:tonClient});
  const stars=starsPricing(env);
+ const notices=notifications({db,env,send:(method,body)=>telegram(method,body)});
+ db.exec(`CREATE TABLE IF NOT EXISTS order_reviews(order_id TEXT PRIMARY KEY REFERENCES marketapp_orders(id),admin_id INTEGER NOT NULL,reviewed_at INTEGER NOT NULL,note TEXT NOT NULL);`);
  function expire(){db.prepare("UPDATE rentals SET status='returning' WHERE status='active' AND ends_at<=?").run(now())}
  function auth(req){let tg;try{tg=verifyTelegram(req.headers['x-telegram-init-data'],env.BOT_TOKEN)}catch(e){fail(e.message,401)}db.prepare('INSERT INTO users(id,name) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name').run(tg.id,tg.first_name||'Foydalanuvchi');return {...db.prepare('SELECT * FROM users WHERE id=?').get(tg.id),admin:admins.includes(String(tg.id))}}
  async function telegram(method,body){if(!env.BOT_TOKEN)fail('Bot hali sozlanmagan.',503);const r=await telegramFetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await r.json();if(!r.ok||!data.ok)fail('Telegram to‘lov xizmatiga ulanib bo‘lmadi.',502);return data.result}
@@ -96,6 +99,17 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  }else if(path==='/api/rent'&&write){expire();result=tx(()=>{const p=db.prepare('SELECT * FROM products WHERE id=? AND enabled=1').get(b.product_id);if(!p)fail('Aktiv topilmadi.',404);if(![1,3,7,14,30].includes(b.days))fail('Ijara muddati noto‘g‘ri.');if(db.prepare("SELECT id FROM rentals WHERE product_id=? AND status IN ('pending','active','returning')").get(p.id))fail('Aktiv hozir band.',409);const total=p.price*b.days;const debit=db.prepare('UPDATE users SET balance=balance-? WHERE id=? AND balance>=?').run(total,user.id,total);if(debit.changes!==1)fail('Balans yetarli emas. Hamyonni to‘ldiring.');const r=db.prepare('INSERT INTO rentals(user_id,product_id,days,total,created_at) VALUES(?,?,?,?,?)').run(user.id,p.id,b.days,total,now());return {id:Number(r.lastInsertRowid),balance:db.prepare('SELECT balance FROM users WHERE id=?').get(user.id).balance}})
  }else if(path==='/api/rentals'&&!write){expire();result=db.prepare('SELECT r.*,p.name FROM rentals r JOIN products p ON p.id=r.product_id WHERE user_id=? ORDER BY r.id DESC').all(user.id);result=[...await partner.history(user),...result]}
  else if(path==='/api/admin'&&!write)result={payments:db.prepare("SELECT p.*,u.name FROM payments p JOIN users u ON u.id=p.user_id WHERE p.status='pending' AND p.method='crypto'").all(),rentals:db.prepare("SELECT r.*,p.name FROM rentals r JOIN products p ON p.id=r.product_id WHERE r.status IN ('pending','returning')").all()};
+ else if(path==='/api/admin/orders'&&!write){
+  result={orders:db.prepare(`SELECT o.id,o.user_id,u.name AS customer,o.name,o.days,o.total,o.state,o.created,o.ends_at,
+   v.reviewed_at,v.note FROM marketapp_orders o JOIN users u ON u.id=o.user_id
+   LEFT JOIN order_reviews v ON v.order_id=o.id WHERE o.state!='quote' ORDER BY o.created DESC LIMIT 100`).all()};
+ }
+ else if(path==='/api/admin/orders/review'&&write){
+  const note=String(b.note||'').trim();if(typeof b.id!=='string'||!/^[-a-f0-9]{36}$/i.test(b.id)||note.length<3||note.length>300)fail('Buyurtma yoki izohni tekshiring.');
+  if(!db.prepare('SELECT 1 FROM marketapp_orders WHERE id=? AND state!=\'quote\'').get(b.id))fail('Buyurtma topilmadi.',404);
+  db.prepare('INSERT INTO order_reviews(order_id,admin_id,reviewed_at,note) VALUES(?,?,?,?) ON CONFLICT(order_id) DO UPDATE SET admin_id=excluded.admin_id,reviewed_at=excluded.reviewed_at,note=excluded.note').run(b.id,user.id,now(),note);result={ok:true};
+ }
+ else if(path==='/api/admin/orders/check'&&write){await partner.reconcile();result={ok:true}}
  else if(path==='/api/admin/payments'&&write){if(typeof b.approve!=='boolean')fail('Qaror noto‘g‘ri.');paymentUpdate(b.id,b.approve);result={ok:true}}
  else if(path==='/api/admin/users'&&!write){const q=url.searchParams.get('q')?.trim()||'';if(q.length>80)fail('Qidiruv juda uzun.');result={users:db.prepare('SELECT id,name,balance FROM users WHERE ?=\'\' OR CAST(id AS TEXT) LIKE ? OR name LIKE ? ORDER BY id DESC LIMIT 50').all(q,`%${q}%`,`%${q}%`),history:db.prepare('SELECT a.id,a.user_id,u.name,a.delta,a.before_balance,a.after_balance,a.reason,a.admin_id,a.created_at FROM balance_adjustments a JOIN users u ON u.id=a.user_id ORDER BY a.id DESC LIMIT 30').all()}}
  else if(path==='/api/admin/balance'&&write){
@@ -121,7 +135,7 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  }
  res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(result));
  }catch(e){res.writeHead(e.status||500,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify({error:e.status?e.message:'Server xatosi. Qayta urinib ko‘ring.'}))}};
- const polling=setInterval(()=>{partner.reconcile().catch(()=>{});deposits.reconcile().catch(()=>console.error('TON reconciliation unavailable; retrying next cycle.'))},15000);polling.unref();
+ const polling=setInterval(()=>{partner.reconcile().catch(()=>{});deposits.reconcile().catch(()=>console.error('TON reconciliation unavailable; retrying next cycle.'));notices.run().catch(()=>{})},15000);polling.unref();
  return {handler,db,close:()=>{clearInterval(polling);deposits.close();db.close()}};
 }
 export function startServer(){

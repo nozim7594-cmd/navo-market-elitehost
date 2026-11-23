@@ -1,4 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {createHmac} from 'node:crypto';import http from 'node:http';import {makeApp,verifyTelegram} from '../server.mjs';
+import {notifications} from '../notifications.mjs';
 const token='test-only-token';
 function signed(id=12,overrides={}){const p=new URLSearchParams({user:JSON.stringify({id,first_name:'Test'}),auth_date:String(Math.floor(Date.now()/1000)),signature:'test-signature',...overrides});const data=[...p].sort(([a],[b])=>a<b?-1:1).map(([k,v])=>`${k}=${v}`).join('\n');const secret=createHmac('sha256','WebAppData').update(token).digest();p.set('hash',createHmac('sha256',secret).update(data).digest('hex'));return p.toString()}
 test('Telegram signature, expiry and tamper protection',()=>{assert.equal(verifyTelegram(signed(),token).id,12);assert.throws(()=>verifyTelegram(signed()+'x',token));assert.throws(()=>verifyTelegram(signed(12,{auth_date:'1'}),token));assert.throws(()=>verifyTelegram(signed(12,{auth_date:String(Math.floor(Date.now()/1000)+500)}),token));assert.throws(()=>verifyTelegram(signed()+'&user=x',token))});
@@ -70,4 +71,28 @@ test('admin can audit balance changes; other users cannot alter balances',async 
  assert.equal((await req('admin/balance',{...change,delta:-0.25,request_id:'cef37571-d09f-4fe1-9c67-c14f55b2417b'},99)).status,200);
  const result=await req('admin/users?q=12',undefined,99);assert.equal(result.status,200);assert.equal(result.data.users.find(u=>u.id===12).balance,1000000);
  assert.equal(result.data.history.length,2);assert.equal(db.prepare('SELECT count(*) AS n FROM balance_adjustments').get().n,2);
+});
+
+test('automatic order dashboard is admin-only and review notes do not touch balances',async t=>{
+ const {req,db}=await fixture(t);await req('bootstrap');await req('bootstrap',undefined,99);
+ const id='12345678-1234-1234-1234-123456789abc';
+ db.prepare("INSERT INTO marketapp_orders(id,user_id,address,name,days,total,state,deadline,created) VALUES(?,?,?,?,?,?,?,?,?)").run(id,12,'asset','Rose #1',3,1250000,'checking',0,Math.floor(Date.now()/1000));
+ assert.equal((await req('admin/orders')).status,403);
+ assert.equal((await req('admin/orders/review',{id,note:'Checked supplier'})).status,403);
+ const list=await req('admin/orders',undefined,99);assert.equal(list.status,200);assert.equal(list.data.orders[0].state,'checking');
+ assert.equal('chain_tx' in list.data.orders[0],false);assert.equal('link' in list.data.orders[0],false);
+ assert.equal((await req('admin/orders/review',{id,note:'Checked supplier'},99)).status,200);
+ assert.equal((await req('admin/orders',undefined,99)).data.orders[0].note,'Checked supplier');
+ assert.equal((await req('me')).data.balance,0);
+});
+
+test('customer notifications are deduplicated and retry a failed send',async t=>{
+ const {db}=await fixture(t);db.prepare('INSERT INTO users(id,name) VALUES(?,?)').run(12,'Test');
+ const calls=[];let failOnce=true,clock=1000;
+ const notices=notifications({db,env:{BOT_TOKEN:token,PUBLIC_URL:'https://example.test'},clock:()=>clock,send:async(method,body)=>{calls.push(body);if(failOnce){failOnce=false;throw Error('temporary')}}});
+ db.prepare("INSERT INTO payments(user_id,method,amount,credit,status,created_at) VALUES(12,'stars',100,1300000,'approved',1000)").run();
+ await notices.run();assert.equal(calls.length,1);assert.equal(db.prepare('SELECT attempts FROM notification_outbox').get().attempts,1);
+ await notices.run();assert.equal(calls.length,1);
+ clock+=15;await notices.run();await notices.run();assert.equal(calls.length,2);assert.equal(calls[1].chat_id,12);
+ assert.equal(db.prepare('SELECT count(*) AS n FROM notification_outbox').get().n,1);
 });
