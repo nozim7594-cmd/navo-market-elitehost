@@ -55,3 +55,19 @@ test('TON Connect transaction uses the authenticated invoice and cannot change b
  db.prepare('UPDATE ton_invoices SET expires_at=1 WHERE payment_id=?').run(expired.id);
  assert.equal((await req('payments/ton-transaction',{id:expired.id})).status,409);
 });
+
+test('admin can audit balance changes; other users cannot alter balances',async t=>{
+ const {req,db}=await fixture(t);await req('bootstrap');await req('bootstrap',undefined,99);
+ const id='bfc99a4d-0e73-4e0c-905a-f8831479da01';
+ const change={user_id:12,delta:1.25,reason:'Verified support correction',request_id:id};
+ assert.equal((await req('admin/users')).status,403);
+ assert.equal((await req('admin/balance',change)).status,403);
+ assert.equal((await req('admin/balance',change,99)).status,200);
+ assert.equal((await req('admin/balance',change,99)).status,200);
+ assert.equal((await req('me')).data.balance,1250000);
+ assert.equal((await req('admin/balance',{...change,delta:2},99)).status,409);
+ assert.equal((await req('admin/balance',{...change,delta:-2,request_id:'cef37571-d09f-4fe1-9c67-c14f55b2417b'},99)).status,409);
+ assert.equal((await req('admin/balance',{...change,delta:-0.25,request_id:'cef37571-d09f-4fe1-9c67-c14f55b2417b'},99)).status,200);
+ const result=await req('admin/users?q=12',undefined,99);assert.equal(result.status,200);assert.equal(result.data.users.find(u=>u.id===12).balance,1000000);
+ assert.equal(result.data.history.length,2);assert.equal(db.prepare('SELECT count(*) AS n FROM balance_adjustments').get().n,2);
+});

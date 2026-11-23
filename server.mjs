@@ -28,6 +28,7 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  CREATE UNIQUE INDEX IF NOT EXISTS unique_crypto_reference ON payments(reference) WHERE method='crypto' AND reference IS NOT NULL;
  CREATE TABLE IF NOT EXISTS rentals(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL REFERENCES users(id),product_id INTEGER NOT NULL REFERENCES products(id),days INTEGER NOT NULL,total INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at INTEGER NOT NULL,ends_at INTEGER);
  CREATE UNIQUE INDEX IF NOT EXISTS one_open_rental ON rentals(product_id) WHERE status IN ('pending','active','returning');`);
+ db.exec(`CREATE TABLE IF NOT EXISTS balance_adjustments(id INTEGER PRIMARY KEY AUTOINCREMENT,request_id TEXT NOT NULL UNIQUE,admin_id INTEGER NOT NULL,user_id INTEGER NOT NULL REFERENCES users(id),delta INTEGER NOT NULL,before_balance INTEGER NOT NULL,after_balance INTEGER NOT NULL,reason TEXT NOT NULL,created_at INTEGER NOT NULL);`);
  const admins=String(env.ADMIN_IDS||'').split(',').map(x=>x.trim());
  const now=()=>Math.floor(Date.now()/1000),fail=(message,status=400)=>{throw Object.assign(Error(message),{status})};
  function tx(fn){db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result}catch(e){db.exec('ROLLBACK');throw e}}
@@ -96,6 +97,20 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  }else if(path==='/api/rentals'&&!write){expire();result=db.prepare('SELECT r.*,p.name FROM rentals r JOIN products p ON p.id=r.product_id WHERE user_id=? ORDER BY r.id DESC').all(user.id);result=[...await partner.history(user),...result]}
  else if(path==='/api/admin'&&!write)result={payments:db.prepare("SELECT p.*,u.name FROM payments p JOIN users u ON u.id=p.user_id WHERE p.status='pending' AND p.method='crypto'").all(),rentals:db.prepare("SELECT r.*,p.name FROM rentals r JOIN products p ON p.id=r.product_id WHERE r.status IN ('pending','returning')").all()};
  else if(path==='/api/admin/payments'&&write){if(typeof b.approve!=='boolean')fail('Qaror noto‘g‘ri.');paymentUpdate(b.id,b.approve);result={ok:true}}
+ else if(path==='/api/admin/users'&&!write){const q=url.searchParams.get('q')?.trim()||'';if(q.length>80)fail('Qidiruv juda uzun.');result={users:db.prepare('SELECT id,name,balance FROM users WHERE ?=\'\' OR CAST(id AS TEXT) LIKE ? OR name LIKE ? ORDER BY id DESC LIMIT 50').all(q,`%${q}%`,`%${q}%`),history:db.prepare('SELECT a.id,a.user_id,u.name,a.delta,a.before_balance,a.after_balance,a.reason,a.admin_id,a.created_at FROM balance_adjustments a JOIN users u ON u.id=a.user_id ORDER BY a.id DESC LIMIT 30').all()}}
+ else if(path==='/api/admin/balance'&&write){
+  const delta=Math.round(Number(b.delta)*1e6),reason=String(b.reason||'').trim(),requestId=String(b.request_id||'');
+  if(!Number.isSafeInteger(b.user_id)||b.user_id<=0||!Number.isSafeInteger(delta)||delta===0||Math.abs(delta)>1000000000||Math.abs(delta/1e6-Number(b.delta))>1e-10||reason.length<3||reason.length>200||!/^[a-f0-9-]{36}$/i.test(requestId))fail('ID, summa yoki sababni tekshiring.');
+  result=tx(()=>{
+   const existing=db.prepare('SELECT * FROM balance_adjustments WHERE request_id=?').get(requestId);
+   if(existing){if(existing.user_id!==b.user_id||existing.delta!==delta||existing.admin_id!==user.id)fail('So‘rov ID qayta ishlatilgan.',409);return {ok:true,balance:existing.after_balance,id:existing.id}}
+   const target=db.prepare('SELECT balance FROM users WHERE id=?').get(b.user_id);if(!target)fail('Foydalanuvchi topilmadi.',404);
+   const after=target.balance+delta;if(!Number.isSafeInteger(after)||after<0)fail('Balans manfiy bo‘lishi mumkin emas.',409);
+   db.prepare('UPDATE users SET balance=? WHERE id=?').run(after,b.user_id);
+   const id=Number(db.prepare('INSERT INTO balance_adjustments(request_id,admin_id,user_id,delta,before_balance,after_balance,reason,created_at) VALUES(?,?,?,?,?,?,?,?)').run(requestId,user.id,b.user_id,delta,target.balance,after,reason,now()).lastInsertRowid);
+   return {ok:true,balance:after,id};
+  });
+ }
  else if(path==='/api/admin/rentals'&&write){if(typeof b.deliver!=='boolean')fail('Qaror noto‘g‘ri.');tx(()=>{const r=db.prepare("SELECT * FROM rentals WHERE id=? AND status IN ('pending','returning')").get(b.id);if(!r)fail('Buyurtma allaqachon ko‘rib chiqilgan.',409);if(r.status==='returning'){if(!b.deliver)fail('Qaytarishni tasdiqlang.');db.prepare("UPDATE rentals SET status='expired' WHERE id=?").run(r.id)}else if(b.deliver)db.prepare("UPDATE rentals SET status='active',ends_at=? WHERE id=?").run(now()+r.days*86400,r.id);else{db.prepare("UPDATE rentals SET status='cancelled' WHERE id=?").run(r.id);db.prepare('UPDATE users SET balance=balance+? WHERE id=?').run(r.total,r.user_id)}});result={ok:true}}
  else if(path==='/api/admin/products'&&write){const price=Math.round(Number(b.price)*1e6);if(!b.name||String(b.name).length>70||!b.serial||String(b.serial).length>80||!['gift','username','number'].includes(b.kind)||!b.emoji||String(b.emoji).length>30||!/^#[0-9a-f]{6}$/i.test(b.color)||!Number.isSafeInteger(price)||price<=0||price>1e12)fail('Aktiv ma’lumotlarini tekshiring.');result={id:Number(db.prepare('INSERT INTO products(name,serial,kind,emoji,color,price) VALUES(?,?,?,?,?,?)').run(String(b.name),String(b.serial),b.kind,String(b.emoji),b.color,price).lastInsertRowid)}}
  else fail('Topilmadi.',404);
