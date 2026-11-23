@@ -55,33 +55,38 @@ function show(content){$('#modal-body').innerHTML=content;$('#modal').showModal(
 function ton(n){return new Intl.NumberFormat('en',{maximumFractionDigits:9}).format(n)}
 function partnerProduct(p) {
   const live=!p.snapshot && p.available && user && config.marketapp_checkout;
-  const explanation=p.snapshot?'Bu ko‘rgazma sovg‘asi. Haqiqiy mavjudlik va ijara narxi jonli katalogda ko‘rsatiladi.':!user?'Ijara buyurtmasi uchun ilovani Telegram bot orqali oching.':!config.marketapp_checkout?'Ijara xizmati hozircha sozlanmoqda.':'';
+  const explanation=p.snapshot?'Bu namuna sovg‘a.':!user?'Ijaraga olish uchun bot orqali kiring.':!config.marketapp_checkout?'Ijara hozircha ulanmagan.':'';
   show(art(p)+`<h2>${esc(p.name)}</h2><p>${ton(p.price)} TON / kun</p>
-    <label class="stack">Ijara muddati (${p.minDays}–${p.maxDays} kun)<input id="days" type="number" min="${p.minDays}" max="${p.maxDays}" value="${p.minDays}"></label>
-    <div class="summary">Taxminiy ijara <b id="total"></b></div>
-    ${live?`<p class="hint">Yakuniy narxga tranzaksiya va tarmoq xarajatlari kiradi.</p><label class="stack">Fragment ulanish havolasi<input id="connect-link" type="url" placeholder="https://app.tonkeeper.com/ton-connect…"></label><p class="hint">Fragment’da Connect TON → Tonkeeper’ni tanlang va QR kod ostidagi havolani kiriting.</p><button class="primary" id="partner-buy">Yakuniy narxni hisoblash</button>`:`<p class="hint">${explanation}</p>`}`);
-  let quote=null;
-  const button=$('#partner-buy'),days=$('#days');
-  function update(){
-    quote=null;$('#total').textContent=days.checkValidity()&&days.value?ton(p.price*Number(days.value))+' TON':'—';
-    if(button)button.textContent='Yakuniy narxni hisoblash';
+    <label class="stack">Muddat (${p.minDays}–${p.maxDays} kun)<input id="days" type="number" min="${p.minDays}" max="${p.maxDays}" value="${p.minDays}"></label>
+    <div class="summary">Jami to‘lov <b id="total">${live?'Hisoblanmoqda…':'—'}</b></div>
+    ${live?`<label class="stack">Fragment ulanish havolasi<input id="connect-link" type="url" placeholder="https://app.tonkeeper.com/ton-connect…"></label><button class="primary" id="partner-buy" disabled>To‘lash</button>`:`<p class="hint">${explanation}</p>`}`);
+  if(!live)return;
+  let quote=null,generation=0,timer;
+  const button=$('#partner-buy'),days=$('#days'),total=$('#total');
+  async function price(){
+    const current=++generation;quote=null;button.disabled=true;button.textContent='To‘lash';
+    if(!days.checkValidity()||!days.value){total.textContent='—';return;}
+    total.textContent='Hisoblanmoqda…';
+    try{
+      const next=await api('partner/quote',{product_id:p.id,days:Number(days.value)});
+      if(current!==generation||!$('#modal').open)return;
+      quote=next;total.textContent=ton(quote.total_micro/1e6)+' TON';
+      button.textContent=ton(quote.total_micro/1e6)+' TON · To‘lash';button.disabled=false;
+    }catch(error){if(current===generation){total.textContent='Narx mavjud emas';toast(error.message)}}
   }
-  days.oninput=update;update();if(!live)return;
+  days.oninput=()=>{clearTimeout(timer);quote=null;button.disabled=true;total.textContent='Hisoblanmoqda…';timer=setTimeout(price,300)};
+  void price();
   button.onclick=async()=>{
-    if(!days.value||!days.reportValidity())return;
+    if(!quote||!days.reportValidity())return;
     button.disabled=true;days.disabled=true;
-    try {
-      if(!quote || quote.deadline<=Date.now()/1000){
-        quote=await api('partner/quote',{product_id:p.id,days:Number(days.value)});
-        $('#total').textContent=ton(quote.total_micro/1e6)+' TON';
-        button.textContent=ton(quote.total_micro/1e6)+' TON to‘lash';return;
-      }
+    try{
+      if(quote.deadline<=Date.now()/1000){const previous=quote.total_micro;await price();if(!quote)return;if(quote.total_micro!==previous){toast('Narx yangilandi. Yangi summani tekshiring.');return}}
       const order=await api('partner/rent',{quote_id:quote.id,link:$('#connect-link').value.trim()});
       $('#modal').close();page='rentals';await load();render();toast(status(order.state));
-    }catch(err){toast(err.message)}finally{button.disabled=false;days.disabled=false}
+    }catch(error){toast(error.message)}finally{days.disabled=false;button.disabled=!quote}
   };
 }
-function product(id){const p=products.find(x=>x.id===id);if(!p)return;if(p.source==='marketapp')return partnerProduct(p);show(art(p)+`<h2>${esc(p.name)}</h2><p>Bir bosishda ijara.</p><span class="hero-price">${ton(p.price)} TON <small>/ kun</small></span><label class="stack">Ijara muddati<select id="days">${[1,3,7,14,30].map(d=>`<option value="${d}">${d} kun</option>`).join('')}</select></label><div class="summary">Jami narx <b id="total">${p.price.toFixed(2)} TON</b></div><p class="hint">To‘lov balansdan olinadi. Aktiv administrator tomonidan beriladi; ijara muddati aktiv berilgandan keyin boshlanadi.</p><button class="primary" id="rent">Ijaraga olish</button><p class="hint">${p.demo?'Bu namuna aktiv, ijaraga berilmaydi.':''}</p>`);$('#days').onchange=e=>$('#total').textContent=(p.price*+e.target.value).toFixed(2)+' TON';$('#rent').onclick=async()=>{if(p.demo)return toast('Namuna aktiv. Administrator haqiqiy aktivlarni qo‘shishi kerak.');if(!user)return toast('Ijaraga olish uchun ilovani Telegram bot orqali oching.');try{const result=await api('rent',{product_id:p.id,days:+$('#days').value});user.balance=result.balance;$('#modal').close();toast('Buyurtma qabul qilindi. Aktiv berilishini kuting.');await load();render()}catch(e){toast(e.message)}}}
+function product(id){const p=products.find(x=>x.id===id);if(!p)return;if(p.source==='marketapp')return partnerProduct(p);show(art(p)+`<h2>${esc(p.name)}</h2><p>Bir bosishda ijara.</p><span class="hero-price">${ton(p.price)} TON <small>/ kun</small></span><label class="stack">Ijara muddati<select id="days">${[1,3,7,14,30].map(d=>`<option value="${d}">${d} kun</option>`).join('')}</select></label><div class="summary">Jami narx <b id="total">${p.price.toFixed(2)} TON</b></div><p class="hint">Balansdan to‘lanadi.</p><button class="primary" id="rent">Ijaraga olish</button><p class="hint">${p.demo?'Bu namuna aktiv, ijaraga berilmaydi.':''}</p>`);$('#days').onchange=e=>$('#total').textContent=(p.price*+e.target.value).toFixed(2)+' TON';$('#rent').onclick=async()=>{if(p.demo)return toast('Namuna aktiv. Administrator haqiqiy aktivlarni qo‘shishi kerak.');if(!user)return toast('Ijaraga olish uchun ilovani Telegram bot orqali oching.');try{const result=await api('rent',{product_id:p.id,days:+$('#days').value});user.balance=result.balance;$('#modal').close();toast('Buyurtma qabul qilindi. Aktiv berilishini kuting.');await load();render()}catch(e){toast(e.message)}}}
 let paymentRows=[],paymentBusy=false,activeInvoice=null;
 function paymentHistory(){return paymentRows.length?paymentRows.map(p=>`<div class="row payment-row"><span class="payment-symbol">${p.method==='stars'?'★':'◇'}</span><div class="payment-detail"><b>${ton(p.amount)} ${p.method==='stars'?'Stars':'TON'}</b><small>${new Date(p.created_at*1000).toLocaleString('uz-UZ')}</small></div><span class="pill ${p.status==='approved'?'success':''}">${p.status==='expired'?'Muddati tugagan':status(p.status)}</span>${p.method==='ton'&&p.status==='pending'?`<button class="secondary" data-payment="${p.id}">Ochish</button>`:''}</div>`).join(''):empty('Hali to‘lov yo‘q','To‘lovlar va ularning holati shu yerda ko‘rinadi.','◇')}
 async function refreshPayments(){
