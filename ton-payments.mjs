@@ -5,16 +5,20 @@ import {Address,TonClient,beginCell} from '@ton/ton';
 export function tonPayments({db,tx,env,client,clock=()=>Math.floor(Date.now()/1000)}) {
  db.exec(`CREATE TABLE IF NOT EXISTS ton_invoices(payment_id INTEGER PRIMARY KEY REFERENCES payments(id),memo TEXT NOT NULL UNIQUE,wallet TEXT NOT NULL,nano TEXT NOT NULL,expires_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS ton_scan(wallet TEXT PRIMARY KEY,watermark TEXT NOT NULL DEFAULT '0',cursor_lt TEXT,cursor_hash TEXT,top_lt TEXT);`);
- let address;
- try{if(Address.isFriendly(env.CRYPTO_WALLET||'')&&Address.parseFriendly(env.CRYPTO_WALLET).isTestOnly)throw Error();address=Address.parse(env.CRYPTO_WALLET)}catch{}
- const enabled=Boolean(address&&env.TON_AUTO_PAYMENTS==='true'&&env.TONCENTER_API_KEY);
- const wallet=address?.toRawString();
+ function currentAddress(){
+  try {
+   if(Address.isFriendly(env.CRYPTO_WALLET||'')&&Address.parseFriendly(env.CRYPTO_WALLET).isTestOnly)return null;
+   return Address.parse(env.CRYPTO_WALLET);
+  }catch{return null}
+ }
+ const enabled=()=>Boolean(currentAddress()&&env.TON_AUTO_PAYMENTS==='true'&&env.TONCENTER_API_KEY);
  const rpc=client||new TonClient({endpoint:'https://toncenter.com/api/v2/jsonRPC',apiKey:env.TONCENTER_API_KEY,timeout:12000});
  let running=false,closed=false;
  const fail=(message,status=400)=>{throw Object.assign(Error(message),{status})};
  function expire(){db.prepare("UPDATE payments SET status='expired' WHERE method='ton' AND status='pending' AND id IN (SELECT payment_id FROM ton_invoices WHERE expires_at<?)").run(clock())}
  function create(user,amount){
-  if(!enabled)fail('TON avtomatik to‘lovlari hali sozlanmagan.',503);
+  const address=currentAddress(),wallet=address?.toRawString();
+  if(!enabled())fail('TON avtomatik to‘lovlari hali sozlanmagan.',503);
   if(!Number.isFinite(amount)||amount<0.01||amount>10000)fail('0.01–10000 TON oralig‘ida summa kiriting.');
   const micro=Math.round(amount*1e6);
   if(Math.abs(micro/1e6-amount)>1e-10)fail('Ko‘pi bilan 6 ta kasr raqami kiriting.');
@@ -26,7 +30,7 @@ export function tonPayments({db,tx,env,client,clock=()=>Math.floor(Date.now()/10
   });
  }
  function transaction(user,id){
-  if(!enabled)fail('TON avtomatik to‘lovlari hali sozlanmagan.',503);
+  if(!enabled())fail('TON avtomatik to‘lovlari hali sozlanmagan.',503);
   expire();
   const p=db.prepare('SELECT p.status,i.* FROM payments p JOIN ton_invoices i ON i.payment_id=p.id WHERE p.id=? AND p.user_id=?').get(id,user.id);
   if(!p)fail('To‘lov topilmadi.',404);
@@ -36,7 +40,8 @@ export function tonPayments({db,tx,env,client,clock=()=>Math.floor(Date.now()/10
    payload:beginCell().storeUint(0,32).storeStringTail(p.memo).endCell().toBoc().toString('base64')
   }]};
  }
- function receive(t){
+ function receive(t,address){
+  const wallet=address.toRawString();
   if(t.now>clock()-60||t.description?.type!=='generic'||t.description.aborted!==false)return;
   const m=t.inMessage;
   if(m?.info.type!=='internal'||m.info.bounced||!m.info.dest.equals(address))return;
@@ -50,10 +55,8 @@ export function tonPayments({db,tx,env,client,clock=()=>Math.floor(Date.now()/10
    if(updated.changes)db.prepare('UPDATE users SET balance=balance+? WHERE id=?').run(invoice.credit,invoice.user_id);
   });
  }
- async function reconcile(){
-  if(!enabled||running||closed)return;running=true;
-  try{
-   expire();
+ async function scanWallet(wallet){
+   const address=Address.parse(wallet);
    const oldest=db.prepare('SELECT min(p.created_at) AS t FROM payments p JOIN ton_invoices i ON p.id=i.payment_id WHERE i.wallet=?').get(wallet).t;
    if(oldest===null)return;
    db.prepare('INSERT OR IGNORE INTO ton_scan(wallet) VALUES(?)').run(wallet);
@@ -65,12 +68,25 @@ export function tonPayments({db,tx,env,client,clock=()=>Math.floor(Date.now()/10
     if(t.lt<=BigInt(s.watermark)||t.now<oldest-30){done=true;break}
     if(t.now>clock()-60)continue;
     if(t.lt>top)top=t.lt;
-    receive(t);
+    receive(t,address);
    }
    const last=rows.at(-1);
    if(done)db.prepare('UPDATE ton_scan SET watermark=?,cursor_lt=NULL,cursor_hash=NULL,top_lt=NULL WHERE wallet=?').run(String(top),wallet);
    else db.prepare('UPDATE ton_scan SET cursor_lt=?,cursor_hash=?,top_lt=? WHERE wallet=?').run(String(last.lt),last.hash().toString('base64'),String(top),wallet);
+ }
+ async function reconcile(){
+  if(!env.TONCENTER_API_KEY||running||closed)return;
+  running=true;
+  try {
+   expire();
+   const wallets=db.prepare('SELECT DISTINCT wallet FROM ton_invoices').all();
+   let failure;
+   for(const {wallet} of wallets){
+    if(closed)return;
+    try{await scanWallet(wallet)}catch(error){failure=error}
+   }
+   if(failure)throw failure;
   }finally{running=false}
  }
- return {enabled,create,transaction,expire,reconcile,close:()=>{closed=true}};
+ return {get enabled(){return enabled()},create,transaction,expire,reconcile,close:()=>{closed=true}};
 }

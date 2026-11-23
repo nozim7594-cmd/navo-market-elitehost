@@ -96,3 +96,24 @@ test('customer notifications are deduplicated and retry a failed send',async t=>
  clock+=15;await notices.run();await notices.run();assert.equal(calls.length,2);assert.equal(calls[1].chat_id,12);
  assert.equal(db.prepare('SELECT count(*) AS n FROM notification_outbox').get().n,1);
 });
+
+test('only the owner can rotate deposit addresses; stale writes and invalid signers are rejected',async t=>{
+ const {req,db}=await fixture(t,{ADMIN_IDS:'99,98',CRYPTO_WALLET:'0:'+'1'.repeat(64),TON_AUTO_PAYMENTS:'true',TONCENTER_API_KEY:'test'});
+ assert.equal((await req('admin/wallets')).status,403);
+ assert.equal((await req('admin/wallets',undefined,98)).status,403);
+ assert.equal((await req('me',undefined,99)).data.owner,true);
+ const old=(await req('payments',{method:'ton',amount:1})).data;
+ const settings=(await req('admin/wallets',undefined,99)).data;
+ const body={...settings,deposit_address:'0:'+'2'.repeat(64)};
+ assert.equal((await req('admin/wallets',body,98)).status,403);
+ assert.equal((await req('admin/wallets',{...body,deposit_address:'invalid'},99)).status,400);
+ const saved=await req('admin/wallets',body,99);assert.equal(saved.status,200);
+ assert.equal(saved.data.revision,1);assert.equal(saved.data.history.length,1);
+ assert.equal((await req('admin/wallets',body,99)).status,409);
+ const next=(await req('payments',{method:'ton',amount:1})).data;
+ assert.notEqual(next.wallet,old.wallet);
+ assert.equal((await req('payments/ton-transaction',{id:old.id})).data.messages[0].address,old.wallet);
+ assert.equal((await req('admin/wallets',{...saved.data,rental_address:'0:'+'3'.repeat(64)},99)).status,503);
+ assert.equal(db.prepare('SELECT revision FROM wallet_settings').get().revision,1);
+ assert.equal('BOT_TOKEN' in saved.data,false);
+});

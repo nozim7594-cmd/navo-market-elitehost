@@ -2048,3 +2048,13 @@ body{background:radial-gradient(ellipse 70% 45% at 75% -10%,rgba(112,70,229,.18)
   .rental-sheet .rental-range { float: none; font-size: 12px; }
   .mobile-filters { scroll-padding-inline: 14px; }
 }
+
+.wallet-settings { margin-bottom: 22px; border-color: #675a94; }
+.wallet-settings input { width: 100%; min-width: 0; font-family: monospace; font-size: 14px; }
+.wallet-settings .hint { margin: -4px 0 14px; }
+.wallet-history-row, .wallet-review { display: grid; gap: 8px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.wallet-history-row code, .wallet-review code { overflow-wrap: anywhere; color: #cfc3ff; font-size: 13px; }
+.wallet-history-row small { color: var(--muted); }
+.wallet-review { margin-bottom: 20px; }
+#wallet-save-error { color: #ffb9b9; margin-top: 14px; }
+@media(max-width:860px) { .wallet-settings input { font-size: 16px; } }

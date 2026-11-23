@@ -47,3 +47,21 @@ TON-счёт отображается 30 минут; корректный поз
 Публичные значения подхватываются после обновления и перезапуска. Переменные хостинга и `.env` имеют приоритет. Если раньше задан `STARS_PER_TON`, удалите его или явно добавьте `STARS_MICRO_TON_PER_STAR=13000`, чтобы применить новый курс. Не путайте это со значением `STARS_PER_TON`: последнее обозначает количество Stars за 1 TON.
 
 Для реальных платежей по-прежнему нужны секреты `BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TONCENTER_API_KEY` и флаг `TON_AUTO_PAYMENTS=true`. Установка webhook проверяет, что токен принадлежит именно указанному боту. Адрес кошелька проверен на корректность формата mainnet; принадлежность и доступ к нему подтверждает владелец.
+
+### Wallet addresses in the admin panel
+
+Open the bot Mini App, then **Profil → Admin panel → Hamyon manzillari**.
+The owner can update the TON deposit address and rental payment wallet address.
+`OWNER_ID` selects the owner. When omitted, the first ID in `ADMIN_IDS` is used.
+Other administrators retain their existing order and balance tools.
+
+Saved addresses are stored in SQLite, override the corresponding `.env` addresses,
+and survive restarts. Keep the database on persistent storage. Each change records
+its previous addresses, new addresses, owner ID and time. Existing TON invoices
+retain their original destination and continue being reconciled after rotation.
+
+The rental address must match the signing wallet. For a different rental wallet,
+first update `MARKETAPP_WALLET_MNEMONIC` securely in the hosting environment and
+restart, then save its public address in the panel. The panel validates the match
+without sending a transfer. Rotation is blocked while a rental payment is settling.
+Stars payments are received by the Telegram bot and do not use the TON deposit address.

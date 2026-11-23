@@ -14,7 +14,7 @@ function fixture(t){
  const client={async getTransactions(a,opts){state.calls.push(opts);if(state.fail)throw Error('offline');return state.rows.filter(r=>!opts.lt||r.lt<BigInt(opts.lt)).slice(0,opts.limit)}};
  const env={CRYPTO_WALLET:address.toString(),TON_AUTO_PAYMENTS:'true',TONCENTER_API_KEY:'test-only'};
  const newProcessor=()=>tonPayments({db,tx,env,client,clock:()=>state.now});
- return {db,state,newProcessor,deposits:newProcessor(),balance:()=>db.prepare('SELECT balance FROM users WHERE id=12').get().balance};
+ return {db,state,env,newProcessor,deposits:newProcessor(),balance:()=>db.prepare('SELECT balance FROM users WHERE id=12').get().balance};
 }
 function transaction(invoice,{id=1,now=1010,amount=1000000000n,dest=address,bounced=false,aborted=false,memo=invoice.memo}={}){
  return {lt:BigInt(id),now,hash:()=>createHash('sha256').update(String(id)).digest(),description:{type:'generic',aborted},inMessage:{info:{type:'internal',bounced,dest,value:{coins:amount}},body:beginCell().storeUint(0,32).storeStringTail(memo).endCell()}};
@@ -46,4 +46,19 @@ test('TON resumes archived pages after restart and then catches newer payments',
 test('TON rejects unsupported precision and amounts before creating an invoice',t=>{
  const f=fixture(t);for(const value of [0,-1,.001,1.0000001,10001,NaN,Infinity])assert.throws(()=>f.deposits.create({id:12},value));
  assert.equal(f.db.prepare('SELECT count(*) AS n FROM payments').get().n,0);
+});
+
+test('wallet rotation keeps old invoices payable and credits both destinations once',async t=>{
+ const f=fixture(t);
+ const first=f.deposits.create({id:12},1);
+ f.env.CRYPTO_WALLET=other.toString();
+ const second=f.deposits.create({id:12},1);
+ assert.ok(Address.parse(first.wallet).equals(address));
+ assert.ok(Address.parse(second.wallet).equals(other));
+ assert.ok(Address.parse(f.deposits.transaction({id:12},first.id).messages[0].address).equals(address));
+ f.state.now=1100;
+ f.state.rows=[transaction(second,{id:2,dest:other}),transaction(first,{id:1})];
+ await f.deposits.reconcile();assert.equal(f.balance(),2000000);
+ await f.newProcessor().reconcile();assert.equal(f.balance(),2000000);
+ assert.equal(f.db.prepare('SELECT count(*) AS n FROM ton_scan').get().n,2);
 });

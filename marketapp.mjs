@@ -52,7 +52,7 @@ export function partnerMarket({db,tx,env,request=fetch,signer=merchantSigner}) {
   let cache,catalogPending,working=false;
   const markup=Number(env.MARKETAPP_MARKUP_PERCENT||10);
   const reserve=Number(env.MARKETAPP_NETWORK_RESERVE_NANO);
-  const billingReady=Boolean(env.MARKETAPP_API_TOKEN&&env.MARKETAPP_WALLET_ADDRESS&&env.MARKETAPP_WALLET_MNEMONIC&&Number.isSafeInteger(reserve)&&reserve>0);
+  const billingReady=()=>Boolean(env.MARKETAPP_API_TOKEN&&env.MARKETAPP_WALLET_ADDRESS&&env.MARKETAPP_WALLET_MNEMONIC&&Number.isSafeInteger(reserve)&&reserve>0);
   if(!Number.isInteger(markup)||markup<=0||markup>100)throw Error('Invalid MARKETAPP_MARKUP_PERCENT');
   async function call(path,body) {
     if(!env.MARKETAPP_API_TOKEN)fail('Ijara katalogi hali ulanmagan.',503);
@@ -96,7 +96,7 @@ export function partnerMarket({db,tx,env,request=fetch,signer=merchantSigner}) {
     try{return await catalogPending}finally{catalogPending=null}
   }
   async function quote(user,b) {
-    if(!billingReady)fail('Hamyonga ulanish hali sozlanmagan.',503);
+    if(!billingReady())fail('Hamyonga ulanish hali sozlanmagan.',503);
     const item=(await catalog()).find(p=>p.id===b.product_id);
     if(!item||!Number.isSafeInteger(b.days)||b.days<item.minDays||b.days>item.maxDays)fail('NFT yoki muddat o‘zgargan.');
     const {transaction:t}=await call(encodeURIComponent(item.address)+'/pay/',{duration:b.days*86400,price_per_day:item.baseNano,sale_during_rent:false});
@@ -117,12 +117,14 @@ export function partnerMarket({db,tx,env,request=fetch,signer=merchantSigner}) {
     return url.href;
   }
   async function rent(user,b){
-    if(!billingReady)fail('Hamyonga ulanish hali sozlanmagan.',503);
+    if(!billingReady())fail('Hamyonga ulanish hali sozlanmagan.',503);
     const link=validateLink(b.link);
     const row=db.prepare('SELECT * FROM marketapp_orders WHERE id=? AND user_id=?').get(b.quote_id,user.id);
     if(!row)fail('Buyurtma topilmadi.',404);
     if(row.state!=='quote')return {id:row.id,state:row.state};
-    const send=await signer(env);
+    const signingAddress=env.MARKETAPP_WALLET_ADDRESS;
+    const send=await signer({...env});
+    if(signingAddress!==env.MARKETAPP_WALLET_ADDRESS)fail('Ijara hamyoni o‘zgardi. Qayta urinib ko‘ring.');
     tx(()=>{
       if(row.deadline<=clock()||!db.prepare("UPDATE marketapp_orders SET state='sending',link=? WHERE id=? AND state='quote'").run(link,row.id).changes)fail('Narxni qayta tekshiring.');
       if(db.prepare("SELECT 1 FROM marketapp_orders WHERE id!=? AND state IN ('sending','checking')").get(row.id))fail('Hamyon band. Qayta urinib ko‘ring.');
@@ -163,5 +165,5 @@ export function partnerMarket({db,tx,env,request=fetch,signer=merchantSigner}) {
     }
     return rows;
   }
-  return {catalog,quote,rent,reconnect,reconcile,history,billingReady};
+  return {catalog,quote,rent,reconnect,reconcile,history,get billingReady(){return billingReady()}};
 }
