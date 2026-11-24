@@ -28,13 +28,33 @@ function motion(p){
 const sums=n=>new Intl.NumberFormat('uz-UZ').format(n);
 let featured = 0, collection='',visibleCount=24;
 const collectionName=p=>p.name.replace(/\s*#\d+$/, '').trim();
-function highlights() {return products.filter(p=>p.kind==='gift'&&(p.image||imageKey(p))).slice(0,3)}
-function featureHtml() {
-  const gifts=highlights();
-  if(!gifts.length)return '';
-  featured=Math.min(featured,gifts.length-1);
-  const p=gifts[featured];
-  return `<section class="hero" style="--feature:${p.color}"><div class="hero-text"><span class="eyebrow">HAFTANING SOVG‘ASI</span><h2>${esc(p.name)}</h2><p>Bir bosishda ijara.</p><span class="hero-price">${ton(p.price)} TON <small>/ kun</small></span><button class="primary" id="explore">Ijarani ko‘rish</button></div><div class="hero-art" aria-hidden="true"><img style="border-radius:18px;height:80%" src="${esc(p.image||'art/'+imageKey(p)+'.webp')}" alt="">${motion(p)}</div><div class="slides">${gifts.map((g,i)=>`<button data-slide="${i}" aria-label="${esc(g.name)}" aria-pressed="${i===featured}"></button>`).join('')}</div></section>`;
+function featuredCollections() {
+  const gifts = new Map();
+  for (const p of products) {
+    if (p.kind === 'gift' && !gifts.has(collectionName(p))) gifts.set(collectionName(p), p);
+  }
+  const choices = ['Astral Shard', 'Eternal Rose', 'Diamond Ring']
+    .filter(name => gifts.has(name)).map(name => gifts.get(name));
+  return choices.length ? choices : [...gifts.values()].filter(p => p.image).slice(0, 3);
+}
+
+function collectionShowcase(choices) {
+  if (!choices.length) return '';
+  featured = Math.min(featured, choices.length - 1);
+  const p = choices[featured];
+  const name = collectionName(p);
+  const model = Object.keys(gallery).find(key => normalizedName(gallery[key][0]) === normalizedName(name));
+  const image = model ? '/art/' + model + '.webp' : p.image;
+  return `<section class="collection-showcase">
+    <div class="showcase-copy"><span class="showcase-label">Kolleksiya</span>
+      <h2>${esc(name)}</h2>
+      <button type="button" class="showcase-open" id="open-collection">Kolleksiyani ko‘rish ${icon('arrow')}</button>
+    </div>
+    <div class="showcase-stage" aria-hidden="true"><span class="orbit"></span>
+      <img class="${model ? 'model-cutout' : 'model-cover'}" src="${esc(image)}" alt="" decoding="async">
+    </div>
+    ${choices.length > 1 ? `<div class="showcase-switch"><button type="button" id="next-collection" aria-label="Keyingi kolleksiya">${icon('next')}</button></div>` : ''}
+  </section>`;
 }
 function icon(name) {
   return `<svg class="ui-icon" aria-hidden="true" focusable="false"><use href="/icons.svg#${name}"></use></svg>`;
@@ -65,14 +85,92 @@ function art(p, animate = false) {
   const key = imageKey(p);
   const visual = p.image ? `<img loading="lazy" class="nft-model" style="width:100%;height:100%;object-fit:cover" src="${esc(p.image)}" alt="${esc(p.name)}">` : key ? `<img loading="lazy" class="nft-model" src="art/${key}.webp" alt="${esc(p.name)}" decoding="async">` :
     `<span class="art-text">${esc(p.kind==='gift'?'✧':p.emoji)}</span>`;
-  return `<div class="art" style="--color:${p.color}"><span class="badge ${p.available?'available':''}">${p.snapshot?'KO‘RGAZMA':p.demo?'NAMUNA':p.available?'IJARAGA TAYYOR':'BAND'}</span>${visual}${animate ? motion(p) : ''}</div>`;
+  return `<div class="art" style="--color:${p.color}"><span class="badge ${p.available&&!p.snapshot&&!p.demo?'available':''}">${p.snapshot?'KO‘RGAZMA':p.demo?'NAMUNA':p.available?'IJARAGA TAYYOR':'BAND'}</span>${visual}${animate ? motion(p) : ''}</div>`;
 }
 function empty(title,desc,icon='✧'){return `<div class="empty"><span>${icon}</span><h2>${title}</h2><p>${desc}</p></div>`}
-function market(){const favorite=page==='favorites',liveCount=products.filter(p=>p.source==='marketapp'&&!p.snapshot).length;const catalogNote=favorite?'':marketLive?`<div class="catalog-note catalog-note-live"><span class="catalog-note-icon">✦</span><span><b>${sums(liveCount)} ta sovg‘a tayyor</b><small>Yoqtirganingizni tanlang</small></span><span class="catalog-live-pill">JONLI</span></div>`:`<div class="catalog-note catalog-note-preview"><span class="catalog-note-icon">✧</span><span><b>Namuna sovg‘alar</b><small>Jonli katalog kutilmoqda</small></span></div>`;$('#main').innerHTML=heading(favorite?'Saqlanganlar':'Sovg‘alar',favorite?'Tanlaganlaringiz.':'Tanlang · To‘lang · Ijaraga oling')+catalogNote+(!favorite?featureHtml():'')+`<div class="section-title">${favorite?'Tanlangan kolleksiyalar':'Ijara katalogi'}<small id="count"></small></div><div class="searchbar"><label class="search">${icon('search')} <input id="q" type="search" placeholder="Sovg‘ani qidiring…" aria-label="Qidirish" value="${esc(query)}"></label><button class="secondary" id="reset" aria-label="Filtrlarni tozalash">${icon('reset')}</button></div><div class="mobile-filters"><button id="mobile-all" class="${!free&&!favorite&&!collection?'selected':''}">Hammasi</button><button id="mobile-free" class="${free?'selected':''}" aria-pressed="${free}">Bo‘shlari</button><button data-page="favorites" class="${favorite?'selected':''}">${icon('favorites')} Saqlangan</button><button id="mobile-collections" aria-expanded="false">Kolleksiyalar ${icon('chevron')}</button></div><div class="filters"><div class="tabs">${[['all','Hammasi'],['gift','Sovg‘alar'],['username','Username'],['number','Raqamlar']].map(([v,t])=>`<button data-kind="${v}" class="${v===kind?'selected':''}">${t}</button>`).join('')}</div><div class="filters-right"><label><input id="free" type="checkbox" ${free?'checked':''}> Faqat bo‘shlari</label><select id="sort" aria-label="Saralash"><option value="new">Yangilari birinchi</option><option value="cheap">Avval arzonlari</option><option value="expensive">Avval qimmatlari</option></select></div></div><div class="collection-strip" id="collection-strip">${['',...new Set(products.filter(p=>p.kind==='gift').map(collectionName))].map(n=>`<button data-collection="${esc(n)}" class="${collection===n?'selected':''}">${esc(n||'Barcha kolleksiyalar')}</button>`).join('')}</div><div class="grid" id="grid"></div><button class="secondary load-more" id="load-more">Yana ko‘rsatish</button><p class="hint">${products.some(p=>p.demo)?'Namuna kolleksiyalar. Haqiqiy aktivlar administrator tomonidan qo‘shiladi.':''}</p>`;$('#mobile-all').onclick=()=>{page='market';free=false;collection='';kind='all';visibleCount=24;market()};
-$('#mobile-free').onclick=()=>{free=!free;market()};
-$('#mobile-collections').onclick=()=>{const strip=$('#collection-strip');const expanded=strip.classList.toggle('mobile-expanded');$('#mobile-collections').setAttribute('aria-expanded',String(expanded))};
-$('#sort').value=sort;$('#load-more').onclick=()=>{visibleCount+=24;drawGrid()};$('#collection-strip').onclick=e=>{const b=e.target.closest('[data-collection]');if(b){collection=b.dataset.collection;visibleCount=24;market()}};drawGrid();$('#q').oninput=e=>{query=e.target.value;visibleCount=24;drawGrid()};$('#free').onchange=e=>{free=e.target.checked;drawGrid()};$('#sort').onchange=e=>{sort=e.target.value;drawGrid()};$('#reset').onclick=()=>{query='';kind='all';free=false;sort='new';collection='';visibleCount=24;market()};if($('#explore'))$('#explore').onclick=()=>product(highlights()[featured].id);document.querySelectorAll('[data-slide]').forEach(button=>button.onclick=()=>{featured=Number(button.dataset.slide);market()})}
-function drawGrid(){let list=products.filter(p=>(page!=='favorites'||favorites.includes(p.id))&&(kind==='all'||p.kind===kind)&&(!free||p.available)&&(!collection||collectionName(p)===collection)&&`${p.name} ${displaySerial(p)}`.toLowerCase().includes(query.toLowerCase()));if(sort!=='new')list.sort((a,b)=>sort==='cheap'?a.price-b.price:b.price-a.price);$('#count').textContent=`${list.length} ta kolleksiya`;$('#grid').innerHTML=list.length?list.slice(0,visibleCount).map(p=>`<article class="card" data-item="${p.id}" tabindex="0" role="button" aria-label="${esc(p.name)}">${art(p).replace('</div>',`<button class="heart" data-fav="${p.id}" aria-label="Saqlash" aria-pressed="${favorites.includes(p.id)}">${icon('favorites')}</button></div>`)}<div class="card-info"><div class="item-title">${esc(p.name)} </div><div class="meta">${esc(displaySerial(p))}</div><div class="card-price"><span class="price">${ton(p.price)} <small>TON / kun</small></span><span class="rent-icon">${icon('plus')}</span></div></div></article>`).join(''):empty('Hech narsa topilmadi','Qidiruv yoki filtrlarni o‘zgartiring.');$('#load-more').hidden=list.length<=visibleCount;}
+function market() {
+  const saved = page === 'favorites';
+  const choices = saved ? [] : featuredCollections();
+  const collections = [...new Set(products.filter(p => p.kind === 'gift').map(collectionName))].sort();
+  const filterCount = Number(Boolean(collection)) + Number(kind !== 'all') + Number(sort !== 'new');
+  const option = ([value,label],current) => `<option value="${esc(value)}" ${value===current?'selected':''}>${esc(label)}</option>`;
+  const title = saved ? 'Saqlanganlar' : 'Sovg‘alar bozori';
+  $('#main').innerHTML = `<div class="storefront">
+    ${collectionShowcase(choices)}
+    <div class="catalog-heading"><h1>${title}</h1><span id="count" aria-live="polite"></span></div>
+    ${!marketLive && products.some(p=>p.snapshot) ? '<p class="store-notice">Ko‘rgazma · Jonli katalog vaqtincha mavjud emas.</p>' : ''}
+    <div class="catalog-tools"><label class="catalog-search">${icon('search')}<input id="q" type="search" placeholder="Sovg‘a nomi yoki raqami" aria-label="Sovg‘ani qidirish" value="${esc(query)}"></label>
+      <button id="filter-toggle" aria-controls="catalog-options" aria-expanded="false">${icon('sliders')}<span>Filtr</span>${filterCount ? `<b>${filterCount}</b>` : ''}</button></div>
+    <div id="catalog-options" class="catalog-options" hidden>
+      <label>Turi<select id="catalog-kind">${[['all','Hammasi'],['gift','Sovg‘alar'],['username','Username'],['number','Raqamlar']].map(v=>option(v,kind)).join('')}</select></label>
+      <label>Kolleksiya<select id="catalog-collection">${[['','Barchasi'],...collections.map(n=>[n,n])].map(v=>option(v,collection)).join('')}</select></label>
+      <label>Saralash<select id="sort">${[['new','Yangilari'],['cheap','Avval arzonlari'],['expensive','Avval qimmatlari']].map(v=>option(v,sort)).join('')}</select></label>
+      <button type="button" id="filter-reset">${icon('reset')} Tozalash</button>
+    </div>
+    <div class="catalog-pills">
+      <button id="catalog-all" aria-pressed="${!saved && !free && !collection && kind==='all'}">Hammasi</button>
+      <button id="catalog-free" aria-pressed="${free}"><i></i> Bo‘shlari</button>
+      <button data-page="${saved?'market':'favorites'}" aria-pressed="${saved}">${icon('favorites')} Saqlangan</button>
+      ${collection ? `<button id="clear-collection" aria-label="Kolleksiya filtrini olib tashlash">${esc(collection)} ${icon('close')}</button>` : ''}
+    </div>
+    <div id="grid" class="gift-grid"></div><button class="secondary load-more" id="load-more">Yana ko‘rsatish</button></div>`;
+
+  function resetCriteria(){free=false;collection='';kind='all';sort='new';query='';visibleCount=24;}
+  function updateFilters() {
+    collection=$('#catalog-collection').value;
+    kind=$('#catalog-kind').value;
+    sort=$('#sort').value;
+    visibleCount=24;
+    market();
+    $('#filter-toggle').click();
+  }
+  $('#q').oninput=e=>{query=e.target.value;visibleCount=24;drawGrid()};
+  $('#catalog-all').onclick=()=>{resetCriteria();page='market';location.hash=page;render()};
+  $('#catalog-free').onclick=()=>{free=!free;visibleCount=24;market()};
+  $('#filter-toggle').onclick=e=>{
+    const panel=$('#catalog-options');panel.hidden=!panel.hidden;
+    e.currentTarget.setAttribute('aria-expanded',String(!panel.hidden));
+  };
+  $('#filter-reset').onclick=()=>{resetCriteria();market()};
+  for(const id of ['#catalog-collection','#catalog-kind','#sort']) $(id).onchange=updateFilters;
+  if ($('#clear-collection')) $('#clear-collection').onclick=()=>{collection='';visibleCount=24;market()};
+  if ($('#next-collection')) $('#next-collection').onclick=()=>{featured=(featured+1)%choices.length;market()};
+  if ($('#open-collection')) $('#open-collection').onclick=()=>{
+    resetCriteria();collection=collectionName(choices[featured]);market();
+    $('.catalog-heading').scrollIntoView({block:'start'});
+  };
+  $('#load-more').onclick=()=>{visibleCount+=24;drawGrid()};
+  drawGrid();
+}
+
+function giftCard(p) {
+  const serial = String(p.name).match(/#\d+$/)?.[0] || (p.source==='marketapp'?'':p.serial);
+  const name = collectionName(p);
+  const favorite = favorites.includes(p.id);
+  return `<article class="gift-card">
+    <button type="button" class="gift-open" data-item="${p.id}" aria-label="${esc(p.name)}">
+      ${art(p)}
+      <span class="gift-caption"><span class="gift-name">${esc(name)}</span>
+        ${serial ? `<small class="gift-serial">${esc(serial)}</small>` : ''}
+        <span class="gift-price">${icon('ton')}<b>${ton(p.price)} TON</b><small>/ kun</small></span>
+      </span>
+    </button>
+    <button type="button" class="heart" data-fav="${p.id}" aria-label="Saqlash: ${esc(p.name)}" aria-pressed="${favorite}">${icon('favorites')}</button>
+  </article>`;
+}
+
+function drawGrid() {
+  const search = query.toLowerCase().trim();
+  const list=products.filter(p=>(page!=='favorites'||favorites.includes(p.id))&&(kind==='all'||p.kind===kind)&&
+    (!free||p.available)&&(!collection||collectionName(p)===collection)&&
+    `${p.name} ${displaySerial(p)}`.toLowerCase().includes(search));
+  if(sort!=='new') list.sort((a,b)=>sort==='cheap'?a.price-b.price:b.price-a.price);
+  $('#count').textContent=`${sums(list.length)} ta`;
+  $('#grid').innerHTML=list.length ? list.slice(0,visibleCount).map(giftCard).join('') :
+    empty(page==='favorites'&&!favorites.length?'Saqlangan sovg‘alar yo‘q':'Hech narsa topilmadi',
+      page==='favorites'&&!favorites.length?'Yoqtirgan sovg‘angizdagi yurakchani bosing.':'Qidiruv yoki filtrlarni o‘zgartiring.');
+  $('#load-more').hidden=list.length<=visibleCount;
+}
 function show(content){
   $('#modal-body').innerHTML=content;
   $('#modal').showModal();
@@ -83,26 +181,36 @@ function ton(n){return new Intl.NumberFormat('en',{maximumFractionDigits:9}).for
 function partnerProduct(p) {
   const live=!p.snapshot && p.available && user && config.marketapp_checkout;
   const explanation=p.snapshot?'Bu namuna sovg‘a.':!user?'Ijaraga olish uchun bot orqali kiring.':!config.marketapp_checkout?'Ijara hozircha ulanmagan.':'';
-  show(art(p,true)+`<div class="rental-sheet"><h2>${esc(p.name)}</h2><p class="rental-sheet-sub">Ijara muddatini tanlang. Yakuniy narx quyida ko‘rinadi.</p>
-    <label class="stack">Muddat <span class="rental-range">${p.minDays}–${p.maxDays} kun</span><input id="days" type="number" inputmode="numeric" min="${p.minDays}" max="${p.maxDays}" value="${p.minDays}"></label>
+  const termOptions = [...new Set([p.minDays, 3, 7, 14, 30])].filter(d=>d>=p.minDays && d<=p.maxDays).slice(0,4);
+  show(art(p,true)+`<div class="rental-sheet"><div class="detail-title"><h2>${esc(collectionName(p))}</h2><span>${esc(p.name.match(/#\d+$/)?.[0]||'')}</span></div>
+    <p class="detail-day-price">${icon('ton')} ${ton(p.price)} TON <small>/ kun</small></p>
+    ${live?`<div class="term-options" aria-label="Ijara muddati">${termOptions.map(d=>`<button type="button" data-term="${d}" aria-pressed="${d===p.minDays}">${d} kun</button>`).join('')}</div>`:''}
+    <label class="stack">Muddat <span class="rental-range">${p.minDays}–${p.maxDays} kun</span><input id="days" ${live?'':'disabled'} type="number" inputmode="numeric" min="${p.minDays}" max="${p.maxDays}" value="${p.minDays}"></label>
     ${live?`<details class="rental-link"><summary>Fragment havolasini qo‘shish</summary><p>Ijara sovg‘asini ulash uchun Fragment havolasi kerak.</p><input id="connect-link" type="url" aria-label="Fragment ulanish havolasi" placeholder="https://app.tonkeeper.com/ton-connect…"></details>`:''}
     <div class="rental-checkout"><div class="summary rental-total"><span>Jami <b id="chosen-days">${p.minDays} kun</b></span><strong id="total">${live?'Hisoblanmoqda…':'—'}</strong></div>
     ${live?`<button class="primary rental-buy" id="partner-buy" disabled>Hisoblanmoqda…</button>`:`<p class="hint">${explanation}</p>`}</div></div>`);
   if(!live)return;
   let quote=null,generation=0,timer;
   const button=$('#partner-buy'),days=$('#days'),total=$('#total');
+  const terms = [...document.querySelectorAll('[data-term]')];
+  const durationLabel = $('#chosen-days');
+  for (const term of terms) term.onclick = () => {
+    if (days.disabled) return;
+    days.value = term.dataset.term;
+    days.dispatchEvent(new Event('input'));
+  };
   async function price(){
     const current=++generation;quote=null;button.disabled=true;button.textContent='To‘lash';
     if(!days.checkValidity()||!days.value){total.textContent='—';return;}
     total.textContent='Hisoblanmoqda…';
     try{
       const next=await api('partner/quote',{product_id:p.id,days:Number(days.value)});
-      if(current!==generation||!$('#modal').open)return;
+      if(current!==generation||!button.isConnected||!$('#modal').open)return;
       quote=next;total.textContent=ton(quote.total_micro/1e6)+' TON';
       button.textContent='Ijaraga olish';button.disabled=false;
     }catch(error){if(current===generation){total.textContent='Narx mavjud emas';toast(error.message)}}
   }
-  days.oninput=()=>{clearTimeout(timer);generation++;quote=null;button.disabled=true;$('#chosen-days').textContent=(days.value||'—')+' kun';total.textContent='Hisoblanmoqda…';timer=setTimeout(price,300)};
+  days.oninput=()=>{clearTimeout(timer);generation++;quote=null;button.disabled=true;durationLabel.textContent=(days.value||'—')+' kun';for(const t of terms)t.setAttribute('aria-pressed',String(t.dataset.term===days.value));total.textContent='Hisoblanmoqda…';timer=setTimeout(price,300)};
   void price();
   button.onclick=async()=>{
     if(!quote||!days.reportValidity())return;
@@ -252,6 +360,6 @@ async function admin(){try{const data=await api('admin');$('#main').innerHTML=he
 async function load(){try{const data=await api('bootstrap');marketLive=Boolean(data.partner_enabled);products=marketLive?data.products:[...snapshot,...data.products];user=data.user;config=data.config}catch{marketLive=false;products=snapshot;user=null;config={}}}
 function render(){nav();if(page==='market'||page==='favorites')market();else if(page==='wallet')wallet();else if(page==='rentals')rentals();else if(page==='admin'&&user?.admin)admin();else profile()}
 document.addEventListener('click',async e=>{const b=e.target.closest('[data-page],[data-kind],[data-fav],[data-item],[data-approve],[data-reject],[data-deliver],[data-cancel]');if(!b)return;if(b.dataset.page){page=b.dataset.page;location.hash=page;render();window.scrollTo(0,0)}else if(b.dataset.kind){kind=b.dataset.kind;market()}else if(b.dataset.fav){const id=+b.dataset.fav;favorites=favorites.includes(id)?favorites.filter(x=>x!==id):[...favorites,id];localStorage.setItem('navo-favorites',JSON.stringify(favorites));if(page==='favorites')drawGrid();else b.setAttribute('aria-pressed',String(favorites.includes(id)))}else if(b.dataset.item)product(+b.dataset.item);else try{if(b.dataset.approve||b.dataset.reject)await api('admin/payments',{id:+(b.dataset.approve||b.dataset.reject),approve:!!b.dataset.approve});else await api('admin/rentals',{id:+(b.dataset.deliver||b.dataset.cancel),deliver:!!b.dataset.deliver});toast('Yangilandi.');admin()}catch(err){toast(err.message)}});
-document.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)&&e.target.matches('[data-item]')){e.preventDefault();product(+e.target.dataset.item)}});$('#modal').addEventListener('close',()=>{activeInvoice=null;document.body.classList.remove('modal-open')});$('.close').onclick=()=>$('#modal').close();$('#modal').onclick=e=>{if(e.target===$('#modal'))$('#modal').close()};$('#help').onclick=()=>show('<h2>Yordam markazi</h2><p>To‘lov va ijara bo‘yicha yordam uchun ilova ochilgan Telegram botiga yozing.</p><p class="hint">Buyurtma raqami yoki tranzaksiya hashini ko‘rsating.</p>');window.Telegram?.WebApp?.ready();window.Telegram?.WebApp?.expand();page=[...links,['admin']].some(x=>x[0]===location.hash.slice(1))?location.hash.slice(1):'market';await load();render();$('#main').setAttribute('aria-busy','false');$('#startup').remove();
+document.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)&&e.target.matches('[data-item]:not(button)')){e.preventDefault();product(+e.target.dataset.item)}});$('#modal').addEventListener('close',()=>{activeInvoice=null;document.body.classList.remove('modal-open')});$('.close').onclick=()=>$('#modal').close();$('#modal').onclick=e=>{if(e.target===$('#modal'))$('#modal').close()};$('#help').onclick=()=>show('<h2>Yordam markazi</h2><p>To‘lov va ijara bo‘yicha yordam uchun ilova ochilgan Telegram botiga yozing.</p><p class="hint">Buyurtma raqami yoki tranzaksiya hashini ko‘rsating.</p>');window.Telegram?.WebApp?.ready();window.Telegram?.WebApp?.expand();page=[...links,['admin']].some(x=>x[0]===location.hash.slice(1))?location.hash.slice(1):'market';await load();render();$('#main').setAttribute('aria-busy','false');$('#startup').remove();
 
 document.addEventListener('click',event=>{const id=event.target.closest('[data-relink]')?.dataset.relink;if(!id)return;show('<h2>Fragment ulanishi</h2><label class="stack">Yangi Tonkeeper havolasi<input id="newlink" type="url"></label><button class="primary" id="retrylink">Ulash</button>');$('#retrylink').onclick=async()=>{try{await api('partner/reconnect',{id,link:$('#newlink').value});$('#modal').close();rentals()}catch(e){toast(e.message)}}});
