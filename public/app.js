@@ -45,15 +45,22 @@ function collectionShowcase(choices) {
   const name = collectionName(p);
   const model = Object.keys(gallery).find(key => normalizedName(gallery[key][0]) === normalizedName(name));
   const image = model ? '/art/' + model + '.webp' : p.image;
-  return `<section class="collection-showcase">
-    <div class="showcase-copy"><span class="showcase-label">Kolleksiya</span>
+  const members = products.filter(item => item.kind === 'gift' && collectionName(item) === name);
+  const lowest = members.reduce((min,item) => Math.min(min,item.price),Infinity);
+  const position = index => String(index).padStart(2,'0');
+  return `<section class="collection-showcase" aria-label="${esc(name)}">
+    <div class="showcase-copy">
+      <span class="showcase-label">Kolleksiya <i aria-hidden="true"></i> ${position(featured + 1)} / ${position(choices.length)}</span>
       <h2>${esc(name)}</h2>
+      <span class="showcase-price">${icon('ton')} ${ton(lowest)} TON / kun dan</span>
       <button type="button" class="showcase-open" id="open-collection">Kolleksiyani ko‘rish ${icon('arrow')}</button>
     </div>
-    <div class="showcase-stage" aria-hidden="true"><span class="orbit"></span>
-      <img class="${model ? 'model-cutout' : 'model-cover'}" src="${esc(image)}" alt="" decoding="async">
+    <div class="showcase-stage" aria-hidden="true">
+      <img class="${model ? 'model-cutout' : 'model-cover'}" src="${esc(image)}" alt="" fetchpriority="high" decoding="async">
     </div>
-    ${choices.length > 1 ? `<div class="showcase-switch"><button type="button" id="next-collection" aria-label="Keyingi kolleksiya">${icon('next')}</button></div>` : ''}
+    ${choices.length > 1 ? `<div class="showcase-switch">
+      <button type="button" id="prev-collection" aria-label="Oldingi kolleksiya">${icon('next')}</button>
+      <button type="button" id="next-collection" aria-label="Keyingi kolleksiya">${icon('next')}</button></div>` : ''}
   </section>`;
 }
 function icon(name) {
@@ -76,8 +83,6 @@ function nav() {
     bar.dataset.markup = markup;
   }
   $('#balance').textContent = ton((user?.balance || 0) / 1e6);
-  $('#mode').textContent = user ? 'Telegram Mini App' : 'Ko‘rib chiqish';
-  $('#crumb').textContent = pages.find(([id]) => id === page)?.[1] || 'Bozor';
 }
 function heading(title,subtitle){return `<div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div><span class="live">Navo Market</span></div>`}
 function displaySerial(p){const value=String(p.serial||'').replace(/^MarketApp\s*·?\s*/i,'').trim();return value||(p.source==='marketapp'?'Ijara taklifi':'')}
@@ -97,10 +102,12 @@ function market() {
   const title = saved ? 'Saqlanganlar' : 'Sovg‘alar bozori';
   $('#main').innerHTML = `<div class="storefront">
     ${collectionShowcase(choices)}
-    <div class="catalog-heading"><h1>${title}</h1><span id="count" aria-live="polite"></span></div>
-    ${!marketLive && products.some(p=>p.snapshot) ? '<p class="store-notice">Ko‘rgazma · Jonli katalog vaqtincha mavjud emas.</p>' : ''}
+    <div class="catalog-command"><div class="catalog-heading"><h1>${title}</h1><span id="count" aria-live="polite"></span></div>
+
     <div class="catalog-tools"><label class="catalog-search">${icon('search')}<input id="q" type="search" placeholder="Sovg‘a nomi yoki raqami" aria-label="Sovg‘ani qidirish" value="${esc(query)}"></label>
       <button id="filter-toggle" aria-controls="catalog-options" aria-expanded="false">${icon('sliders')}<span>Filtr</span>${filterCount ? `<b>${filterCount}</b>` : ''}</button></div>
+    </div>
+    ${!marketLive && products.some(p=>p.snapshot) ? '<p class="store-notice">Ko‘rgazma · Jonli katalog vaqtincha mavjud emas.</p>' : ''}
     <div id="catalog-options" class="catalog-options" hidden>
       <label>Turi<select id="catalog-kind">${[['all','Hammasi'],['gift','Sovg‘alar'],['username','Username'],['number','Raqamlar']].map(v=>option(v,kind)).join('')}</select></label>
       <label>Kolleksiya<select id="catalog-collection">${[['','Barchasi'],...collections.map(n=>[n,n])].map(v=>option(v,collection)).join('')}</select></label>
@@ -134,11 +141,27 @@ function market() {
   $('#filter-reset').onclick=()=>{resetCriteria();market()};
   for(const id of ['#catalog-collection','#catalog-kind','#sort']) $(id).onchange=updateFilters;
   if ($('#clear-collection')) $('#clear-collection').onclick=()=>{collection='';visibleCount=24;market()};
-  if ($('#next-collection')) $('#next-collection').onclick=()=>{featured=(featured+1)%choices.length;market()};
-  if ($('#open-collection')) $('#open-collection').onclick=()=>{
-    resetCriteria();collection=collectionName(choices[featured]);market();
-    $('.catalog-heading').scrollIntoView({block:'start'});
-  };
+  const showcase = $('.collection-showcase');
+  if (showcase) {
+    showcase.onclick = event => {
+      const action = event.target.closest('button')?.id;
+      if (action === 'open-collection') {
+        resetCriteria();
+        collection = collectionName(choices[featured]);
+        market();
+        $('.catalog-heading').scrollIntoView({block:'start'});
+      } else if (action === 'prev-collection' || action === 'next-collection') {
+        const direction = action === 'prev-collection' ? -1 : 1;
+        featured = (featured + direction + choices.length) % choices.length;
+        const replacement = document.createElement('template');
+        replacement.innerHTML = collectionShowcase(choices);
+        const slide = replacement.content.firstElementChild;
+        showcase.setAttribute('aria-label',slide.getAttribute('aria-label'));
+        showcase.replaceChildren(...slide.childNodes);
+        showcase.querySelector('#' + action).focus({preventScroll:true});
+      }
+    };
+  }
   $('#load-more').onclick=()=>{visibleCount+=24;drawGrid()};
   drawGrid();
 }
@@ -184,8 +207,14 @@ function partnerProduct(p) {
   const termOptions = [...new Set([p.minDays, 3, 7, 14, 30])].filter(d=>d>=p.minDays && d<=p.maxDays).slice(0,4);
   show(art(p,true)+`<div class="rental-sheet"><div class="detail-title"><h2>${esc(collectionName(p))}</h2><span>${esc(p.name.match(/#\d+$/)?.[0]||'')}</span></div>
     <p class="detail-day-price">${icon('ton')} ${ton(p.price)} TON <small>/ kun</small></p>
+    <div class="duration-control"><label for="days">Ijara muddati<small>${p.minDays}–${p.maxDays} kun</small></label>
+      <div class="duration-stepper">
+        ${live?'<button type="button" data-step="-1" aria-label="Bir kun kamaytirish">−</button>':''}
+        <input id="days" ${live?'':'disabled'} type="number" inputmode="numeric" min="${p.minDays}" max="${p.maxDays}" value="${p.minDays}">
+        ${live?`<button type="button" data-step="1" aria-label="Bir kun qo‘shish">${icon('plus')}</button>`:''}
+      </div>
+    </div>
     ${live?`<div class="term-options" aria-label="Ijara muddati">${termOptions.map(d=>`<button type="button" data-term="${d}" aria-pressed="${d===p.minDays}">${d} kun</button>`).join('')}</div>`:''}
-    <label class="stack">Muddat <span class="rental-range">${p.minDays}–${p.maxDays} kun</span><input id="days" ${live?'':'disabled'} type="number" inputmode="numeric" min="${p.minDays}" max="${p.maxDays}" value="${p.minDays}"></label>
     ${live?`<details class="rental-link"><summary>Fragment havolasini qo‘shish</summary><p>Ijara sovg‘asini ulash uchun Fragment havolasi kerak.</p><input id="connect-link" type="url" aria-label="Fragment ulanish havolasi" placeholder="https://app.tonkeeper.com/ton-connect…"></details>`:''}
     <div class="rental-checkout"><div class="summary rental-total"><span>Jami <b id="chosen-days">${p.minDays} kun</b></span><strong id="total">${live?'Hisoblanmoqda…':'—'}</strong></div>
     ${live?`<button class="primary rental-buy" id="partner-buy" disabled>Hisoblanmoqda…</button>`:`<p class="hint">${explanation}</p>`}</div></div>`);
@@ -194,6 +223,14 @@ function partnerProduct(p) {
   const button=$('#partner-buy'),days=$('#days'),total=$('#total');
   const terms = [...document.querySelectorAll('[data-term]')];
   const durationLabel = $('#chosen-days');
+  for (const step of document.querySelectorAll('[data-step]')) {
+    step.onclick = () => {
+      if (days.disabled) return;
+      const next = (Number(days.value) || p.minDays) + Number(step.dataset.step);
+      days.value = Math.max(p.minDays, Math.min(next, p.maxDays));
+      days.dispatchEvent(new Event('input'));
+    };
+  }
   for (const term of terms) term.onclick = () => {
     if (days.disabled) return;
     days.value = term.dataset.term;
