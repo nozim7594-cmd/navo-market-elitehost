@@ -2058,3 +2058,57 @@ body{background:radial-gradient(ellipse 70% 45% at 75% -10%,rgba(112,70,229,.18)
 .wallet-review { margin-bottom: 20px; }
 #wallet-save-error { color: #ffb9b9; margin-top: 14px; }
 @media(max-width:860px) { .wallet-settings input { font-size: 16px; } }
+
+/* Shared controls and motion */
+.ui-icon {
+  width: 1.2em;
+  height: 1.2em;
+  display: inline-block;
+  flex: none;
+  vertical-align: -.2em;
+  pointer-events: none;
+}
+#nav .ui-icon { width: 21px; height: 21px; }
+.mobile-brand > .ui-icon, .brand-icon > .ui-icon { width: 31px; height: 31px; }
+.mobile-brand > .ui-icon { align-self: center; color: #b3a5ff; margin-right: 3px; }
+.search > .ui-icon { width: 20px; height: 20px; color: #b7bfd4; }
+.wallet > .ui-icon { color: #aadafc; }
+.wallet i .ui-icon { width: 14px; height: 14px; }
+.heart .ui-icon { width: 20px; height: 20px; }
+.heart[aria-pressed=true] .ui-icon use { fill: currentColor; }
+.mobile-filters .ui-icon { width: 14px; height: 14px; }
+#reset, dialog .close { display: grid; place-items: center; }
+#reset .ui-icon, dialog .close .ui-icon { width: 19px; height: 19px; }
+.art gift-motion, .hero-art gift-motion {
+  position: absolute; inset: 0; display: block; pointer-events: none; opacity: 0;
+  transition: opacity .25s ease;
+}
+gift-motion canvas { display: block; width: 100%; height: 100%; }
+.art gift-motion.running, .hero-art gift-motion.running { opacity: 1; }
+.art:has(gift-motion.running) > img, .hero-art:has(gift-motion.running) > img { opacity: 0; }
+.art > img { transition: opacity .25s ease, transform .25s ease; }
+button:focus-visible, [data-item]:focus-visible { outline: 2px solid #c4b8ff; outline-offset: 3px; }
+
+@media(max-width:860px) {
+  body { background: radial-gradient(ellipse at 20% 0%,#232940 0%,transparent 40vh),#101622; }
+  header { background: rgba(18,24,39,.94); }
+  #nav { border-color: #354057; background: rgba(23,31,47,.97); }
+  #nav .active { color: #dbcfff; border-color: #5e547b; background: linear-gradient(155deg,#393349,#2a253c); }
+  .card { background: linear-gradient(145deg,#232b40,#1a2233); border-color: #31394d; }
+  .card .heart { top: 5px; right: 5px; background: radial-gradient(circle,rgba(18,22,35,.8) 48%,transparent 51%); border-radius: 50%; }
+  .card .item-title { letter-spacing: -.02em; font-size: 14px; }
+  .card .price { font-variant-numeric: tabular-nums; }
+  dialog .primary { background: linear-gradient(105deg,#c0b0ff,#a392fb); color: #171525; }
+}
+
+@keyframes navo-rise { from { opacity: .15; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes navo-save { 45% { transform: scale(1.24); } }
+@keyframes navo-gift-in { from { opacity: .3; transform: scale(.92); } to { opacity: 1; transform: scale(1); } }
+@media(prefers-reduced-motion:no-preference) {
+  .card { animation: navo-rise .26s ease-out backwards; }
+  .card:nth-child(2n) { animation-delay: 35ms; }
+  .card:nth-child(3n) { animation-delay: 65ms; }
+  .heart[aria-pressed=true] .ui-icon { animation: navo-save .26s ease-out; }
+  #modal[open] #modal-body > .art { animation: navo-gift-in .32s ease-out; }
+  #nav button.active .ui-icon { animation: navo-rise .22s ease-out; }
+}
