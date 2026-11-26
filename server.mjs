@@ -4,6 +4,7 @@ import {autoConfigureTelegram} from './telegram-setup.mjs';
 import {tonPayments} from './ton-payments.mjs';
 import {notifications} from './notifications.mjs';
 import {partnerMarket} from './marketapp.mjs';
+import {createTelegramPosterLookup,telegramGiftSlug} from './telegram-poster.mjs';
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
@@ -38,6 +39,8 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  const wallets=walletSettings({db,tx,env});
  const ownerId=String(env.OWNER_ID||admins.find(Boolean)||'');
  const partner=partnerMarket({db,tx,env});
+ const lookupPoster=createTelegramPosterLookup();
+ const posterCatalogs=new WeakMap();
  const deposits=tonPayments({db,tx,env,client:tonClient});
  const stars=starsPricing(env);
  const notices=notifications({db,env,send:(method,body)=>telegram(method,body)});
@@ -70,7 +73,7 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  if(path==='/api/bootstrap'&&req.method==='GET'){
  let partnerProducts=[],partnerEnabled=false;
  if(env.MARKETAPP_API_TOKEN)try{partnerProducts=await partner.catalog();partnerEnabled=true}catch{}
- result={products:[...partnerProducts,...catalog()],partner_enabled:partnerEnabled,user,config:{marketapp_checkout:partner.billingReady,crypto_wallet:env.CRYPTO_WALLET||'',ton_auto:deposits.enabled,stars_enabled:!!(env.BOT_TOKEN&&env.TELEGRAM_WEBHOOK_SECRET&&stars),stars_per_ton:stars?.starsPerTon||null,stars_ton_per_100:stars?.tonPer100||null,stars_credit_micro:stars?.microPerStar||null}};
+ result={products:[...partnerProducts,...catalog()],partner_enabled:partnerEnabled,user,config:{bot_username:env.BOT_USERNAME?.trim().replace(/^@/,'')||null,marketapp_checkout:partner.billingReady,crypto_wallet:env.CRYPTO_WALLET||'',ton_auto:deposits.enabled,stars_enabled:!!(env.BOT_TOKEN&&env.TELEGRAM_WEBHOOK_SECRET&&stars),stars_per_ton:stars?.starsPerTon||null,stars_ton_per_100:stars?.tonPer100||null,stars_credit_micro:stars?.microPerStar||null}};
  }
  else{
  if(!user)fail('Telegram orqali kiring.',401);
@@ -136,7 +139,32 @@ export function makeApp({dbPath=process.env.DB_PATH||root+'navo.sqlite',env=proc
  }
  }else{
  if(req.method!=='GET'&&req.method!=='HEAD')fail('Usul topilmadi.',405);
- const artAsset=/^\/art\/(exhibit|pepe|cap|heart|shard|bear|rose|ring|ball|ma-[A-Za-z0-9_-]{48})\.webp$/.test(path);const animation=/^\/motion\/[A-Za-z0-9_-]{48}\.tgs$/.test(path);const files={'/vendor/barlow/display.woff2':['vendor/barlow/display.woff2','font/woff2'],'/icons.svg':['icons.svg','image/svg+xml'],'/wallet-connect.js':['wallet-connect.js','text/javascript'],'/wallet-icon.png':['wallet-icon.png','image/png'],'/vendor/tonconnect-ui.js':['vendor/tonconnect-ui.js','text/javascript'],'/gift-motion.js':['gift-motion.js','text/javascript'],'/vendor/lottie.js':['vendor/lottie.js','text/javascript'],'/catalog.json':['catalog.json','application/json'],'/':['index.html','text/html; charset=utf-8'],'/market':['index.html','text/html; charset=utf-8'],'/index.html':['index.html','text/html; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8']};const f=animation?[path.slice(1),'application/octet-stream']:artAsset?[path.slice(1),'image/webp']:files[path];if(!f)fail('Topilmadi.',404);const data=await readFile(root+'public/'+f[0]);res.writeHead(200,{'Content-Type':f[1],'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});return res.end(req.method==='HEAD'?undefined:data);
+ if(path.startsWith('/art/telegram/')){
+  const key=/^\/art\/telegram\/([A-Za-z][A-Za-z0-9]{0,79}-[1-9]\d{0,11})$/.exec(path)?.[1];
+  if(!key)fail('Rasm topilmadi.',404);
+  let rows;
+  try{rows=await partner.catalog()}catch{fail('Ijara katalogi vaqtincha mavjud emas.',503)}
+  let keys=posterCatalogs.get(rows);
+  if(!keys){
+   keys=new Map();
+   for(const gift of rows){
+    const canonical=telegramGiftSlug(gift.name);
+    if(canonical)keys.set(canonical.toLowerCase(),canonical);
+   }
+   posterCatalogs.set(rows,keys);
+  }
+  const canonical=keys.get(key.toLowerCase());
+  if(!canonical)fail('Rasm topilmadi.',404);
+  let image;
+  try{image=await lookupPoster(...canonical.split('-'))}catch{
+   res.setHeader('Retry-After','15');
+   fail('Rasm vaqtincha mavjud emas.',503);
+  }
+  if(!image)fail('Rasm topilmadi.',404);
+  res.writeHead(302,{Location:image,'Cache-Control':'public, max-age=1800','Referrer-Policy':'no-referrer'});
+  return res.end();
+ }
+ const artAsset=/^\/art\/(exhibit|pepe|cap|heart|shard|bear|rose|ring|ball|ma-[A-Za-z0-9_-]{48})\.webp$/.test(path);const animation=/^\/motion\/[A-Za-z0-9_-]{48}\.tgs$/.test(path);const files={'/startup.css':['startup.css','text/css; charset=utf-8'],'/vendor/manrope/manrope.woff2':['vendor/manrope/manrope.woff2','font/woff2'],'/account-ui.css':['account-ui.css','text/css; charset=utf-8'],'/detail-ui.css':['detail-ui.css','text/css; charset=utf-8'],'/icons.svg':['icons.svg','image/svg+xml'],'/wallet-connect.js':['wallet-connect.js','text/javascript'],'/wallet-icon.png':['wallet-icon.png','image/png'],'/vendor/tonconnect-ui.js':['vendor/tonconnect-ui.js','text/javascript'],'/gift-motion.js':['gift-motion.js','text/javascript'],'/vendor/lottie.js':['vendor/lottie.js','text/javascript'],'/catalog.json':['catalog.json','application/json'],'/':['index.html','text/html; charset=utf-8'],'/market':['index.html','text/html; charset=utf-8'],'/index.html':['index.html','text/html; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8']};const f=animation?[path.slice(1),'application/octet-stream']:artAsset?[path.slice(1),'image/webp']:files[path];if(!f)fail('Topilmadi.',404);const data=await readFile(root+'public/'+f[0]);res.writeHead(200,{'Content-Type':f[1],'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});return res.end(req.method==='HEAD'?undefined:data);
  }
  res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(result));
  }catch(e){res.writeHead(e.status||500,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify({error:e.status?e.message:'Server xatosi. Qayta urinib ko‘ring.'}))}};

@@ -1,6 +1,65 @@
-<!doctype html><html lang="uz"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111110"><meta name="description" content="Telegram sovg‘alarini kashf qiling va ijaraga oling."><title>Navo Market — Telegram sovg‘alari</title><link rel="preload" href="/vendor/barlow/display.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="style.css"><script src="https://telegram.org/js/telegram-web-app.js"></script><body><section class="startup skeleton-startup" id="startup" role="status" aria-label="Sovg‘alar yuklanmoqda"><div class="skeleton-header"><b>navo<span>market</span></b><i></i></div><div class="skeleton-search"></div><div class="skeleton-tabs"></div><div class="skeleton-grid"><div><i></i><span></span><span></span></div><div><i></i><span></span><span></span></div><div><i></i><span></span><span></span></div><div><i></i><span></span><span></span></div><div><i></i><span></span><span></span></div><div><i></i><span></span><span></span></div></div><span class="skeleton-caption">Sovg‘alar yuklanmoqda…</span></section><header class="gallery-header"><div class="gallery-bar">
-<a class="gallery-brand" href="#market" data-page="market" aria-label="Navo Market"><svg class="ui-icon" aria-hidden="true" focusable="false"><use href="/icons.svg#mark"></use></svg><strong>NAVO</strong><span>MARKET</span></a>
-<nav id="nav" aria-label="Navigatsiya"></nav>
-<div class="gallery-account"><button class="wallet" data-page="wallet" aria-label="Hamyon"><svg class="ui-icon" aria-hidden="true" focusable="false"><use href="/icons.svg#ton"></use></svg><b id="balance">0</b><small>TON</small><i><svg class="ui-icon" aria-hidden="true" focusable="false"><use href="/icons.svg#plus"></use></svg></i></button>
-<button class="gallery-help" id="help" aria-label="Yordam"><svg class="ui-icon" aria-hidden="true" focusable="false"><use href="/icons.svg#help"></use></svg></button></div>
-</div></header><div class="shell"><main id="main" aria-busy="true"></main><footer><span>Navo Market</span><span>Stars & TON <b>✧</b></span></footer></div><div id="toast" role="status"></div><dialog id="modal"><button class="close" aria-label="Yopish"><svg class="ui-icon" aria-hidden="true" focusable="false"><use href="/icons.svg#close"></use></svg></button><div id="modal-body"></div></dialog><script type="module" src="app.js"></script></body></html>
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1620">
+  <meta name="description" content="Telegram sovg‘alarini kashf qiling va ijaraga oling.">
+  <title>Navo Market — Telegram sovg‘alari</title>
+  <link rel="preload" href="/vendor/manrope/manrope.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/startup.css">
+  <link rel="stylesheet" href="/detail-ui.css">
+  <link rel="stylesheet" href="/account-ui.css">
+  <noscript><style>.launch-screen { display: none !important; }</style></noscript>
+  <script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div class="launch-screen" id="startup" role="status" aria-label="Navo Market yuklanmoqda">
+    <span class="launch-emblem" aria-hidden="true">
+      <svg focusable="false"><use href="/icons.svg#mark"></use></svg>
+    </span>
+    <span class="launch-caption" aria-hidden="true">
+      Yuklanmoqda
+      <span class="launch-dots"><i></i><i></i><i></i></span>
+    </span>
+  </div>
+
+  <header class="gallery-header">
+    <div class="gallery-bar">
+      <a class="gallery-brand" href="#market" data-page="market" aria-label="Navo Market">
+        <span class="brand-sign">
+          <svg class="ui-icon" aria-hidden="true" focusable="false"><use href="/icons.svg#mark"></use></svg>
+        </span>
+        <strong>Navo<span>Market</span></strong>
+      </a>
+      <nav id="nav" aria-label="Asosiy navigatsiya"></nav>
+      <div class="gallery-account">
+        <button type="button" class="wallet" data-page="wallet" aria-label="Hamyon">
+          <svg class="ui-icon" aria-hidden="true" focusable="false"><use href="/icons.svg#ton"></use></svg>
+          <b id="balance">0</b><small>TON</small>
+          <i aria-hidden="true"><svg class="ui-icon" focusable="false"><use href="/icons.svg#plus"></use></svg></i>
+        </button>
+        <button type="button" class="gallery-help" id="help" aria-label="Yordam">
+          <svg class="ui-icon" aria-hidden="true" focusable="false"><use href="/icons.svg#help"></use></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="shell">
+    <main id="main" aria-busy="true">
+      <noscript><p>Navo Marketni ochish uchun brauzeringizda JavaScript’ni yoqing.</p></noscript>
+    </main>
+    <footer><span>Navo Market</span><span>Stars &amp; TON</span></footer>
+  </div>
+  <div id="toast" role="status"></div>
+  <dialog id="modal">
+    <button type="button" class="close" aria-label="Yopish">
+      <svg class="ui-icon" aria-hidden="true" focusable="false"><use href="/icons.svg#close"></use></svg>
+    </button>
+    <div id="modal-body"></div>
+  </dialog>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
