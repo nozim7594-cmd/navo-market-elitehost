@@ -13,6 +13,7 @@ function motion(p) {
 }
 const sums=n=>new Intl.NumberFormat('uz-UZ').format(n);
 let featured = 0, collection = '', visibleCount = 24;
+let revealObserver;
 const collectionName = p => p.name.replace(/\s*#\d+$/, '').trim();
 const giftColor = p => /^#[a-f\d]{6}$/i.test(p.color) ? p.color : '#536477';
 const giftNumber = p => p.name.match(/#\d+$/)?.[0] || (p.source === 'marketapp' ? '' : p.serial || '');
@@ -179,10 +180,10 @@ function giftCard(p) {
   const serial = giftNumber(p);
   const name = collectionName(p);
   const favorite = favorites.includes(p.id);
-  return `<article class="gift-card">
+  return `<article class="gift-card" style="--gift-color:${giftColor(p)}">
     <button type="button" class="gift-open" data-item="${p.id}" aria-label="${esc(p.name)}">
       ${art(p)}
-      <span class="gift-caption"><span class="gift-name">${esc(name)}</span>
+      <span class="gift-caption">${imageFor(p) ? `<span class="gift-aura" aria-hidden="true">${poster(p)}</span>` : ''}<span class="gift-name">${esc(name)}</span>
         ${serial ? `<small class="gift-serial">${esc(serial)}</small>` : ''}
         <span class="gift-price">${icon('ton')}<b>${ton(p.price)} TON</b><small>/ kun</small></span>
       </span>
@@ -192,6 +193,7 @@ function giftCard(p) {
 }
 
 function drawGrid() {
+  revealObserver?.disconnect();
   const search = query.toLowerCase().trim();
   const list=products.filter(p=>(page!=='favorites'||favorites.includes(p.id))&&(kind==='all'||p.kind===kind)&&
     (!free||(p.available&&!p.snapshot&&!p.demo))&&(!collection||collectionName(p)===collection)&&
@@ -201,6 +203,20 @@ function drawGrid() {
   $('#grid').innerHTML=list.length ? list.slice(0,visibleCount).map(giftCard).join('') :
     empty(page==='favorites'&&!favorites.length?'Saqlangan sovg‘alar yo‘q':'Hech narsa topilmadi',
       page==='favorites'&&!favorites.length?'Yoqtirgan sovg‘angizdagi yurakchani bosing.':'Qidiruv yoki filtrlarni o‘zgartiring.');
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches && 'IntersectionObserver' in window) {
+    revealObserver = new IntersectionObserver((entries, observer) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        entry.target.classList.add('is-visible');
+        observer.unobserve(entry.target);
+      }
+    }, {rootMargin:'0px 0px 70px 0px', threshold:0.08});
+    for (const [index, card] of [...$('#grid').querySelectorAll('.gift-card')].entries()) {
+      card.style.setProperty('--reveal-delay', `${Math.min(index % 6, 5) * 35}ms`);
+      card.classList.add('reveal-ready');
+      revealObserver.observe(card);
+    }
+  }
   $('#load-more').hidden=list.length<=visibleCount;
 }
 function show(content){

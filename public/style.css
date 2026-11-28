@@ -2233,7 +2233,7 @@ main { padding-top: 25px; padding-bottom: 70px; }
 .catalog-pills i { width: 7px; height: 7px; background: var(--mint); border-radius: 50%; }
 .gift-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,185px),1fr)); gap: 16px; }
 .gift-grid .empty { grid-column: 1/-1; color: var(--paper); border-color: var(--edge); }
-.gift-card { position: relative; min-width: 0; background: #182229; border: 1px solid #2c3942; border-radius: 19px; overflow: clip; }
+.gift-card { position: relative; min-width: 0; background: #182229; border: 1px solid color-mix(in srgb,var(--gift-color),#2c3942 72%); border-radius: 19px; overflow: clip; }
 .gift-open { display: block; width: 100%; height: 100%; text-align: left; padding: 5px; color: var(--paper); background: transparent; border-radius: inherit; }
 .gift-open:focus-visible { outline-offset: -3px; }
 .gift-card .art { border: 0; margin: 0; border-radius: 14px; aspect-ratio: 1; background: radial-gradient(at 40% 26%,color-mix(in srgb,var(--color),white 5%),color-mix(in srgb,var(--color) 75%,#16212b)); }
@@ -2243,7 +2243,11 @@ main { padding-top: 25px; padding-bottom: 70px; }
 .gift-card .heart { top: 5px; right: 5px; display: grid; place-items: center; width: 44px; height: 44px; border: 0; background: radial-gradient(circle,#142125b3 47%,transparent 50%); color: #fff; border-radius: 50%; backdrop-filter: none; }
 .gift-card .heart .ui-icon { width: 17px; height: 17px; }
 .gift-card .heart[aria-pressed=true] { color: var(--mint); }
-.gift-caption { display: grid; gap: 3px; padding: 10px 8px 9px; }
+.gift-caption { position: relative; isolation: isolate; display: grid; gap: 3px; padding: 10px 8px 9px; overflow: hidden; background: linear-gradient(115deg,color-mix(in srgb,var(--gift-color),#182229 87%),#182229 80%); }
+.gift-caption > :not(.gift-aura) { position: relative; z-index: 1; }
+.gift-aura { position: absolute; inset: -65% -20%; overflow: hidden; opacity: .14; pointer-events: none; }
+.gift-aura img { width: 100%; height: 100%; object-fit: cover; filter: blur(27px) saturate(1.45); transform: scale(1.35); }
+.gift-aura .poster-unavailable { display: none; }
 .gift-name { font-size: 16px; font-weight: 760; letter-spacing: -.036em; line-height: 1.25; overflow-wrap: anywhere; }
 .gift-serial { color: #a6b5ba; font: 12px/1.25 var(--mono); }
 .gift-price { color: #b2f7da; gap: 4px; margin-top: 6px; }
@@ -2258,13 +2262,20 @@ dialog .primary,.primary { background: var(--mint); color: #082d22; box-shadow: 
 footer { color: var(--subtle); border-color: var(--edge); }
 footer b { color: var(--mint); }
 @media (hover:hover) {
-  .gift-card:has(.gift-open:hover) { border-color: #627e78; }
+  .gift-card:has(.gift-open:hover) { border-color: color-mix(in srgb,var(--gift-color),#87f3cd 65%); transform: translateY(-3px); box-shadow: 0 13px 22px #0006; }
   .pick:hover { background: #22332f; }
   .spotlight-action:hover { background: #b0f9dc; }
 }
 @media (prefers-reduced-motion:no-preference) {
   .spotlight-stage { animation: item-appear .32s ease-out; }
-  .spotlight-action,.gift-card,.pick { transition: background-color .2s,border-color .2s,transform .2s; }
+  .spotlight-action,.gift-card,.pick { transition: background-color .2s,border-color .2s,transform .22s ease,opacity .45s ease,box-shadow .22s ease; }
+  .gift-card.reveal-ready { opacity: 0; transform: translateY(14px); }
+  .gift-card.reveal-ready.is-visible { opacity: 1; transform: translateY(0); transition-delay: var(--reveal-delay,0ms); }
+  .gift-card.reveal-ready.is-visible:has(.gift-open:hover) { transform: translateY(-3px); }
+  .gift-card:has(.gift-open:active) { transform: scale(.975); }
+  .gift-card.reveal-ready.is-visible:has(.gift-open:active) { transform: scale(.975); }
+  .gift-card:has(.gift-open:hover) .nft-model { transform: scale(1.035); }
+  .gift-card .heart:active { transform: scale(.86); }
   .spotlight-action:active { transform: scale(.97); }
   @keyframes item-appear { from { opacity: .55; transform: translateY(4px); } }
 }
