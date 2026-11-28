@@ -86,7 +86,7 @@ function icon(name) {
 }
 const links = [
   ['market', 'Bozor'], ['favorites', 'Saqlanganlar'], ['rentals', 'Ijaralarim'],
-  ['wallet', 'Hamyon'], ['profile', 'Profil']
+  ['services', 'Xizmatlar'], ['wallet', 'Hamyon'], ['profile', 'Profil']
 ];
 function toast(s){$('#toast').textContent=s;$('#toast').style.display='block';clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>$('#toast').style.display='none',4500)}
 async function api(path,body){const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','X-Telegram-Init-Data':window.Telegram?.WebApp?.initData||''},body:body?JSON.stringify(body):undefined});const data=await r.json();if(!r.ok)throw Error(data.error||'Xatolik yuz berdi');return data}
@@ -678,11 +678,29 @@ async function rentals() {
     </section>
   </div>`;
 }
+function services() {
+  $('#main').innerHTML = `<div class="services-page">
+    <div class="services-heading"><span class="services-eyebrow">Telegram xizmatlari</span><h1>Stars va Premium</h1><p>Sotib olish Fragment saytida yakunlanadi.</p></div>
+    <div class="services-grid">
+      <article class="service-card service-stars">
+        <span class="service-icon">${icon('star')}</span><h2>Telegram Stars</h2>
+        <p>O‘zingizga yoki yaqinlaringizga Stars oling.</p>
+        <a class="service-link" href="https://fragment.com/stars/buy" target="_blank" rel="noopener noreferrer" data-fragment>Fragmentda xarid qilish ${icon('arrow')}</a>
+      </article>
+      <article class="service-card service-premium">
+        <span class="service-icon">${icon('spark')}</span><h2>Telegram Premium</h2>
+        <p>Premium obunasini Telegram akkauntiga sovg‘a qiling.</p>
+        <a class="service-link" href="https://fragment.com/premium/gift" target="_blank" rel="noopener noreferrer" data-fragment>Fragmentda xarid qilish ${icon('arrow')}</a>
+      </article>
+    </div>
+    <p class="services-note">Qabul qiluvchi, yakuniy narx va to‘lovni Fragmentda tekshiring. Bu xarid Navo Market balansiga qo‘shilmaydi.</p>
+  </div>`;
+}
 function profile() {
   const name = user?.name || 'Mehmon';
   const initial = Array.from(name.trim())[0] || '?';
   const destinations = [
-    ['wallet', 'Hamyon'], ['rentals', 'Ijaralarim'], ['favorites', 'Saqlanganlar'],
+    ['wallet', 'Hamyon'], ['rentals', 'Ijaralarim'], ['favorites', 'Saqlanganlar'], ['services', 'Stars va Premium'],
     ...(user?.admin ? [['admin', 'Admin panel']] : [])
   ];
   $('#main').innerHTML = `<div class="account-page profile-page">
@@ -931,7 +949,13 @@ async function admin() {
   }
 }
 async function load(){try{const data=await api('bootstrap');marketLive=Boolean(data.partner_enabled);products=marketLive?data.products:[...snapshot,...data.products];user=data.user;config=data.config}catch{marketLive=false;products=snapshot;user=null;config={}}}
-function render(){nav();if(page==='market'||page==='favorites')market();else if(page==='wallet')wallet();else if(page==='rentals')rentals();else if(page==='admin'&&user?.admin)admin();else profile()}
+function render(){nav();if(page==='market'||page==='favorites')market();else if(page==='wallet')wallet();else if(page==='rentals')rentals();else if(page==='services')services();else if(page==='admin'&&user?.admin)admin();else profile()}
+document.addEventListener('click', event => {
+  const link = event.target.closest('a[data-fragment]');
+  if (!link || !window.Telegram?.WebApp?.openLink) return;
+  event.preventDefault();
+  window.Telegram.WebApp.openLink(link.href);
+});
 window.addEventListener('hashchange', () => {
   const requested = location.hash.slice(1);
   const nextPage = links.some(([id]) => id === requested) || (requested === 'admin' && user?.admin) ? requested : 'market';
